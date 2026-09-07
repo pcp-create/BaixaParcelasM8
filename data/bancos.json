@@ -1,0 +1,20 @@
+[
+  {
+    "id": "banco-teste",
+    "nome": "Banco Teste",
+    "mapping": {
+      "cliente": "CLIENTE",
+      "dataVencimento": "DATA VENCIMENTO",
+      "dataPagamento": "DATA DO PAGAMENTO",
+      "documento": "DOCUMENTO",
+      "valor": "VALOR"
+    },
+    "m8": {
+      "contaContabilId": 0,
+      "historicoId": 0,
+      "meioPagamentoId": 0,
+      "observacaoInterna": "Baixa automática via conciliação bancária",
+      "complemento": "Banco Teste"
+    }
+  }
+]
