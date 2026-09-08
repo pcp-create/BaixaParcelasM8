@@ -326,14 +326,27 @@ export async function autenticarM8(
    LISTAR TODAS AS CONTAS A PAGAR
 
    GET
-   /v1/financeiro/contapagar
+   /v1/financeiro/contapagar?PageSize=0&Page=0
+
+   PageSize = 0
+   Page     = 0
 ============================================================ */
 
 export async function listarContasPagar(
   token: string
 ): Promise<M8ContaPagar[]> {
+  /* ==========================================================
+     PARÂMETROS DA CONSULTA
+  ========================================================== */
+
+  const params =
+    new URLSearchParams({
+      PageSize: "0",
+      Page: "0",
+    });
+
   const url =
-    `${baseUrl}/v1/financeiro/contapagar`;
+    `${baseUrl}/v1/financeiro/contapagar?${params.toString()}`;
 
   console.log("");
   console.log(
@@ -347,6 +360,16 @@ export async function listarContasPagar(
   console.log(
     "[M8] URL:",
     url
+  );
+
+  console.log(
+    "[M8] Query PageSize:",
+    "0"
+  );
+
+  console.log(
+    "[M8] Query Page:",
+    "0"
   );
 
   console.log(
@@ -491,29 +514,25 @@ export async function listarContasPagar(
 
   /* ==========================================================
      DIAGNÓSTICO 2
-     PROCURAR QUALQUER REGISTRO CONTENDO ELGI
+     PROCURAR ELGI
   ========================================================== */
 
   const titulosElgi =
     titulos.filter(
-      (titulo: any) => {
-        try {
-          return JSON.stringify(
-            titulo
+      (titulo: any) =>
+        String(
+          titulo?.fornecedorNome ??
+          ""
+        )
+          .toUpperCase()
+          .includes(
+            "ELGI"
           )
-            .toUpperCase()
-            .includes(
-              "ELGI"
-            );
-        } catch {
-          return false;
-        }
-      }
     );
 
   console.log("");
   console.log(
-    "[M8 TESTE] REGISTROS CONTENDO 'ELGI':",
+    "[M8 TESTE] TÍTULOS CONTENDO ELGI:",
     titulosElgi.length
   );
 
@@ -527,11 +546,25 @@ export async function listarContasPagar(
     ) {
       console.log(
         "[M8 ELGI]",
-        JSON.stringify(
-          titulo,
-          null,
-          2
-        )
+        {
+          id:
+            titulo.id,
+
+          fornecedorId:
+            titulo.fornecedorId,
+
+          fornecedorNome:
+            titulo.fornecedorNome,
+
+          documento:
+            titulo.documento,
+
+          valor:
+            titulo.valor,
+
+          saldo:
+            titulo.saldo,
+        }
       );
     }
   }
@@ -595,18 +628,28 @@ export async function listarContasPagar(
     ) {
       console.log(
         "[M8 VALOR 10739]",
-        JSON.stringify(
-          titulo,
-          null,
-          2
-        )
+        {
+          id:
+            titulo.id,
+
+          fornecedorNome:
+            titulo.fornecedorNome,
+
+          documento:
+            titulo.documento,
+
+          valor:
+            titulo.valor,
+
+          saldo:
+            titulo.saldo,
+        }
       );
     }
   }
 
   /* ==========================================================
-     DIAGNÓSTICO 4
-     PRIMEIROS 5 REGISTROS
+     PRIMEIROS 5
   ========================================================== */
 
   console.log("");
@@ -650,8 +693,7 @@ export async function listarContasPagar(
     );
 
   /* ==========================================================
-     DIAGNÓSTICO 5
-     ÚLTIMOS 5 REGISTROS
+     ÚLTIMOS 5
   ========================================================== */
 
   console.log("");
@@ -853,8 +895,7 @@ export async function listarParcelas(
   }
 
   /* ==========================================================
-     TESTE ESPECÍFICO
-     PARCELA 60130
+     TESTE ESPECÍFICO DA ELGI
   ========================================================== */
 
   if (
@@ -1048,14 +1089,8 @@ export async function baixarParcela(
     Date.now();
 
   /*
-   * IMPORTANTE:
-   *
-   * Não usamos retry automático na baixa.
-   *
-   * Se o M8 processar a baixa e ocorrer
-   * falha apenas na resposta HTTP,
-   * um retry poderia gerar risco de
-   * processamento duplicado.
+   * Sem retry automático na baixa.
+   * Evita risco de processar a mesma baixa duas vezes.
    */
   const response =
     await request<any>(
