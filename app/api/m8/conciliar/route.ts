@@ -84,17 +84,7 @@ function clienteContemPrefixo(
     return false;
   }
 
-  /*
-   * Evita falsos positivos como:
-   *
-   * prefixo = ABC
-   * cliente = XABCY
-   *
-   * Procura a palavra.
-   */
-  const palavrasCliente = cliente.split(/[^A-Z0-9]+/).filter(Boolean);
-
-  return palavrasCliente.includes(prefixoNormalizado);
+  return cliente.includes(prefixoNormalizado);
 }
 
 /* ============================================================
