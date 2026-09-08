@@ -4,6 +4,8 @@ export type IntegrationStatus =
   | "pronto"
   | "baixando"
   | "baixada"
+  | "ja_baixada"
+  | "parcialmente_baixada"
   | "nao_encontrado"
   | "conflito"
   | "erro";
@@ -15,6 +17,10 @@ export type CanonicalField =
   | "documento"
   | "valor";
 
+/* ============================================================
+   CONFIGURAÇÃO DE MAPEAMENTO DO BANCO
+============================================================ */
+
 export interface BankMapping {
   cliente: string;
   dataVencimento: string;
@@ -23,6 +29,10 @@ export interface BankMapping {
   valor: string;
 }
 
+/* ============================================================
+   CONFIGURAÇÃO M8 POR BANCO
+============================================================ */
+
 export interface BankM8Config {
   contaContabilId: number;
   historicoId: number;
@@ -30,6 +40,10 @@ export interface BankM8Config {
   observacaoInterna: string;
   complemento: string;
 }
+
+/* ============================================================
+   BANCO
+============================================================ */
 
 export interface BankConfig {
   id: string;
@@ -40,6 +54,10 @@ export interface BankConfig {
   m8: BankM8Config;
 }
 
+/* ============================================================
+   LINHA NORMALIZADA DO CSV
+============================================================ */
+
 export interface NormalizedCsvRow {
   rowId: string;
 
@@ -48,8 +66,11 @@ export interface NormalizedCsvRow {
   original: Record<string, string>;
 
   cliente: string;
+
   dataVencimento: string;
+
   dataPagamento: string;
+
   documento: string;
 
   valor: number | null;
@@ -71,21 +92,23 @@ export interface NormalizedCsvRow {
   apiError?: string;
 
   /*
-   * Payload completo retornado pelo M8.
-   * Será usado no modal de detalhes.
+   * Payload completo retornado na ETAPA 2.
    */
   tituloM8?: Record<string, any>;
 
+  /*
+   * Payload completo da parcela retornado na ETAPA 3.
+   */
   parcelaM8?: Record<string, any>;
 
   /*
-   * Resposta completa do endpoint de baixa.
+   * Retorno da ETAPA 4.
    */
   baixaM8?: Record<string, any>;
 }
 
 /* ============================================================
-   CONTAS A PAGAR M8
+   CONTA A PAGAR M8
 ============================================================ */
 
 export interface M8ContaPagar {
@@ -113,7 +136,7 @@ export interface M8ContaPagar {
 }
 
 /* ============================================================
-   PARCELAS M8
+   PARCELA M8
 ============================================================ */
 
 export interface M8Parcela {

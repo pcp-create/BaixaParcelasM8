@@ -30,7 +30,10 @@ const STORAGE_KEY =
 ============================================================ */
 
 function money(
-  v: number | null | undefined
+  v:
+    | number
+    | null
+    | undefined
 ) {
   if (v == null) {
     return "—";
@@ -39,13 +42,18 @@ function money(
   return new Intl.NumberFormat(
     "pt-BR",
     {
-      style: "currency",
-      currency: "BRL",
+      style:
+        "currency",
+
+      currency:
+        "BRL",
     }
   ).format(v);
 }
 
-function dateBr(v: string) {
+function dateBr(
+  v: string
+) {
   if (!v) {
     return "—";
   }
@@ -96,7 +104,8 @@ interface ColumnFilters {
   status: string;
 }
 
-const EMPTY_FILTERS: ColumnFilters = {
+const EMPTY_FILTERS:
+  ColumnFilters = {
   cliente: "",
   documento: "",
   vencimento: "",
@@ -126,7 +135,8 @@ interface ProgressState {
   label: string;
 }
 
-const INITIAL_PROGRESS: ProgressState = {
+const INITIAL_PROGRESS:
+  ProgressState = {
   active: false,
   type: "",
   current: 0,
@@ -135,7 +145,7 @@ const INITIAL_PROGRESS: ProgressState = {
 };
 
 /* ============================================================
-   MODAL DE DETALHES
+   MODAL
 ============================================================ */
 
 interface DetailModalState {
@@ -144,7 +154,10 @@ interface DetailModalState {
   subtitle: string;
 
   data:
-    | Record<string, any>
+    | Record<
+        string,
+        any
+      >
     | null;
 }
 
@@ -154,107 +167,138 @@ interface DetailModalState {
 
 export default function MainApp() {
   /* ==========================================================
-     ESTADOS PRINCIPAIS
+     ESTADOS
   ========================================================== */
 
-  const [banks, setBanks] =
-    useState<BankConfig[]>(
+  const [
+    banks,
+    setBanks,
+  ] =
+    useState<
+      BankConfig[]
+    >(
       defaultBanks as BankConfig[]
     );
 
-  const [bankId, setBankId] =
-    useState("banco-teste");
+  const [
+    bankId,
+    setBankId,
+  ] =
+    useState(
+      "banco-teste"
+    );
 
-  const [company, setCompany] =
+  const [
+    company,
+    setCompany,
+  ] =
     useState(1);
 
-  const [headers, setHeaders] =
-    useState<string[]>([]);
+  const [
+    headers,
+    setHeaders,
+  ] =
+    useState<
+      string[]
+    >([]);
 
-  const [rawRows, setRawRows] =
+  const [
+    rawRows,
+    setRawRows,
+  ] =
     useState<
       Array<{
         numeroLinha: number;
-        values: Record<string, string>;
+
+        values:
+          Record<
+            string,
+            string
+          >;
       }>
     >([]);
 
-  const [rows, setRows] =
-    useState<NormalizedCsvRow[]>([]);
+  const [
+    rows,
+    setRows,
+  ] =
+    useState<
+      NormalizedCsvRow[]
+    >([]);
 
-  const [fileName, setFileName] =
+  const [
+    fileName,
+    setFileName,
+  ] =
     useState("");
 
-  const [busy, setBusy] =
+  const [
+    busy,
+    setBusy,
+  ] =
     useState(false);
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState("");
 
   const [
     showConfig,
     setShowConfig,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  /* ==========================================================
-     PESQUISA
-  ========================================================== */
-
-  const [query, setQuery] =
+  const [
+    query,
+    setQuery,
+  ] =
     useState("");
 
-  /* ==========================================================
-     CLASSIFICAÇÃO
-  ========================================================== */
-
-  const [sortKey, setSortKey] =
-    useState<SortKey | null>(
-      null
-    );
+  const [
+    sortKey,
+    setSortKey,
+  ] =
+    useState<
+      SortKey | null
+    >(null);
 
   const [
     sortDirection,
     setSortDirection,
   ] =
-    useState<SortDirection>(
-      null
-    );
-
-  /* ==========================================================
-     FILTROS
-  ========================================================== */
+    useState<
+      SortDirection
+    >(null);
 
   const [
     columnFilters,
     setColumnFilters,
   ] =
-    useState<ColumnFilters>(
+    useState<
+      ColumnFilters
+    >(
       EMPTY_FILTERS
     );
-
-  /* ==========================================================
-     PROGRESSO
-  ========================================================== */
 
   const [
     progress,
     setProgress,
   ] =
-    useState<ProgressState>(
+    useState<
+      ProgressState
+    >(
       INITIAL_PROGRESS
     );
-
-  /* ==========================================================
-     MODAL M8
-  ========================================================== */
 
   const [
     detailModal,
     setDetailModal,
   ] =
-    useState<DetailModalState | null>(
-      null
-    );
+    useState<
+      DetailModalState | null
+    >(null);
 
   const [
     showFullPayload,
@@ -263,7 +307,7 @@ export default function MainApp() {
     useState(false);
 
   /* ==========================================================
-     CARREGAR BANCOS SALVOS
+     BANCOS SALVOS
   ========================================================== */
 
   useEffect(() => {
@@ -275,7 +319,9 @@ export default function MainApp() {
     if (saved) {
       try {
         setBanks(
-          JSON.parse(saved)
+          JSON.parse(
+            saved
+          )
         );
       } catch {}
     }
@@ -288,8 +334,10 @@ export default function MainApp() {
   const bank =
     banks.find(
       (b) =>
-        b.id === bankId
-    ) || banks[0];
+        b.id ===
+        bankId
+    ) ||
+    banks[0];
 
   /* ==========================================================
      TROCA DE BANCO
@@ -315,56 +363,80 @@ export default function MainApp() {
 
   const counts =
     useMemo(
-      () => ({
-        total:
-          rows.length,
-
-        pronto:
+      () => {
+        const pronto =
           rows.filter(
             (r) =>
               r.status ===
               "pronto"
-          ).length,
+          );
 
-        baixada:
+        const baixadaAgora =
           rows.filter(
             (r) =>
               r.status ===
               "baixada"
-          ).length,
+          ).length;
 
-        erro:
+        const jaBaixada =
+          rows.filter(
+            (r) =>
+              r.status ===
+              "ja_baixada"
+          ).length;
+
+        const pendencias =
           rows.filter(
             (r) =>
               [
                 "erro",
                 "nao_encontrado",
                 "conflito",
+                "parcialmente_baixada",
               ].includes(
                 r.status
               )
-          ).length,
+          ).length;
 
-        valorPronto:
-          rows
-            .filter(
-              (r) =>
-                r.status ===
-                "pronto"
-            )
-            .reduce(
-              (a, r) =>
-                a +
-                (r.valor || 0),
+        return {
+          total:
+            rows.length,
+
+          pronto:
+            pronto.length,
+
+          /*
+           * Consideramos como baixado
+           * tanto o que foi baixado nesta
+           * operação quanto o que o M8
+           * informou como já baixado.
+           */
+          baixada:
+            baixadaAgora +
+            jaBaixada,
+
+          erro:
+            pendencias,
+
+          valorPronto:
+            pronto.reduce(
+              (
+                total,
+                r
+              ) =>
+                total +
+                (r.valor ||
+                  0),
               0
             ),
-      }),
+        };
+      },
 
       [rows]
     );
 
   /* ==========================================================
-     PERCENTUAL DO PROGRESSO
+     PROGRESSO
   ========================================================== */
 
   const progressPercent =
@@ -377,24 +449,25 @@ export default function MainApp() {
       : 0;
 
   /* ==========================================================
-     ALTERAR FILTRO
+     FILTROS
   ========================================================== */
 
   function setColumnFilter(
-    key: keyof ColumnFilters,
-    value: string
+    key:
+      keyof ColumnFilters,
+
+    value:
+      string
   ) {
     setColumnFilters(
       (old) => ({
         ...old,
-        [key]: value,
+
+        [key]:
+          value,
       })
     );
   }
-
-  /* ==========================================================
-     LIMPAR FILTROS
-  ========================================================== */
 
   function clearFilters() {
     setQuery("");
@@ -403,10 +476,6 @@ export default function MainApp() {
       ...EMPTY_FILTERS,
     });
   }
-
-  /* ==========================================================
-     EXISTEM FILTROS?
-  ========================================================== */
 
   const hasActiveFilters =
     useMemo(
@@ -491,11 +560,13 @@ export default function MainApp() {
           if (
             columnFilters.cliente &&
             !String(
-              r.cliente || ""
+              r.cliente ||
+                ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.cliente
+                columnFilters
+                  .cliente
                   .toLowerCase()
               )
           ) {
@@ -509,11 +580,13 @@ export default function MainApp() {
           if (
             columnFilters.documento &&
             !String(
-              r.documento || ""
+              r.documento ||
+                ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.documento
+                columnFilters
+                  .documento
                   .toLowerCase()
               )
           ) {
@@ -534,7 +607,8 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.vencimento
+                columnFilters
+                  .vencimento
                   .toLowerCase()
               )
             ) {
@@ -556,7 +630,8 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.pagamento
+                columnFilters
+                  .pagamento
                   .toLowerCase()
               )
             ) {
@@ -578,7 +653,8 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.valor
+                columnFilters
+                  .valor
                   .toLowerCase()
               )
             ) {
@@ -593,9 +669,11 @@ export default function MainApp() {
           if (
             columnFilters.titulo &&
             !String(
-              r.tituloId ?? ""
+              r.tituloId ??
+                ""
             ).includes(
-              columnFilters.titulo
+              columnFilters
+                .titulo
             )
           ) {
             return false;
@@ -608,9 +686,11 @@ export default function MainApp() {
           if (
             columnFilters.parcela &&
             !String(
-              r.parcelaId ?? ""
+              r.parcelaId ??
+                ""
             ).includes(
-              columnFilters.parcela
+              columnFilters
+                .parcela
             )
           ) {
             return false;
@@ -642,16 +722,15 @@ export default function MainApp() {
   ========================================================== */
 
   function handleSort(
-    key: SortKey
+    key:
+      SortKey
   ) {
-    /*
-     * Nova coluna:
-     * começa crescente.
-     */
     if (
       sortKey !== key
     ) {
-      setSortKey(key);
+      setSortKey(
+        key
+      );
 
       setSortDirection(
         "asc"
@@ -660,9 +739,6 @@ export default function MainApp() {
       return;
     }
 
-    /*
-     * Crescente -> decrescente.
-     */
     if (
       sortDirection ===
       "asc"
@@ -674,14 +750,13 @@ export default function MainApp() {
       return;
     }
 
-    /*
-     * Decrescente -> sem classificação.
-     */
     if (
       sortDirection ===
       "desc"
     ) {
-      setSortKey(null);
+      setSortKey(
+        null
+      );
 
       setSortDirection(
         null
@@ -690,7 +765,9 @@ export default function MainApp() {
       return;
     }
 
-    setSortKey(key);
+    setSortKey(
+      key
+    );
 
     setSortDirection(
       "asc"
@@ -698,10 +775,12 @@ export default function MainApp() {
   }
 
   function sortIcon(
-    key: SortKey
+    key:
+      SortKey
   ) {
     if (
-      sortKey !== key ||
+      sortKey !==
+        key ||
       !sortDirection
     ) {
       return "↕";
@@ -726,12 +805,6 @@ export default function MainApp() {
         return filteredRows;
       }
 
-      /*
-       * IMPORTANTE:
-       *
-       * Criamos uma cópia para
-       * NÃO alterar rows.
-       */
       return [
         ...filteredRows,
       ].sort(
@@ -743,10 +816,6 @@ export default function MainApp() {
           let valueB:
             any =
             b[sortKey];
-
-          /* -----------------------------------------------
-             CAMPOS NUMÉRICOS
-          ------------------------------------------------ */
 
           if (
             [
@@ -760,18 +829,16 @@ export default function MainApp() {
           ) {
             valueA =
               Number(
-                valueA ?? 0
+                valueA ??
+                  0
               );
 
             valueB =
               Number(
-                valueB ?? 0
+                valueB ??
+                  0
               );
           }
-
-          /* -----------------------------------------------
-             COMPARAÇÃO NUMÉRICA
-          ------------------------------------------------ */
 
           if (
             typeof valueA ===
@@ -789,16 +856,14 @@ export default function MainApp() {
               : -result;
           }
 
-          /* -----------------------------------------------
-             TEXTO / DATAS
-          ------------------------------------------------ */
-
           const result =
             String(
-              valueA ?? ""
+              valueA ??
+                ""
             ).localeCompare(
               String(
-                valueB ?? ""
+                valueB ??
+                  ""
               ),
               "pt-BR",
               {
@@ -823,14 +888,16 @@ export default function MainApp() {
     ]);
 
   /* ==========================================================
-     IMPORTAÇÃO CSV
+     IMPORTAR CSV
   ========================================================== */
 
   async function chooseFile(
-    e: ChangeEvent<HTMLInputElement>
+    e:
+      ChangeEvent<HTMLInputElement>
   ) {
     const file =
-      e.target.files?.[0];
+      e.target
+        .files?.[0];
 
     if (!file) {
       return;
@@ -839,7 +906,9 @@ export default function MainApp() {
     if (
       !file.name
         .toLowerCase()
-        .endsWith(".csv")
+        .endsWith(
+          ".csv"
+        )
     ) {
       setMessage(
         "Selecione um arquivo .CSV."
@@ -853,7 +922,9 @@ export default function MainApp() {
         await file.text();
 
       const parsed =
-        parseCsv(text);
+        parseCsv(
+          text
+        );
 
       setHeaders(
         parsed.headers
@@ -874,13 +945,11 @@ export default function MainApp() {
         )
       );
 
-      /*
-       * Nova importação começa
-       * sem filtros/classificação.
-       */
       clearFilters();
 
-      setSortKey(null);
+      setSortKey(
+        null
+      );
 
       setSortDirection(
         null
@@ -908,11 +977,12 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     SALVAR CONFIGURAÇÃO DO BANCO
+     SALVAR BANCO
   ========================================================== */
 
   function saveBank(
-    updated: BankConfig
+    updated:
+      BankConfig
   ) {
     const next =
       banks.map(
@@ -923,7 +993,9 @@ export default function MainApp() {
             : b
       );
 
-    setBanks(next);
+    setBanks(
+      next
+    );
 
     localStorage.setItem(
       STORAGE_KEY,
@@ -969,11 +1041,16 @@ export default function MainApp() {
 
       mapping: {
         cliente: "",
+
         dataVencimento:
           "",
+
         dataPagamento:
           "",
-        documento: "",
+
+        documento:
+          "",
+
         valor: "",
       },
 
@@ -990,7 +1067,8 @@ export default function MainApp() {
         observacaoInterna:
           "Baixa automática via conciliação bancária",
 
-        complemento: "",
+        complemento:
+          "",
       },
     };
 
@@ -999,9 +1077,13 @@ export default function MainApp() {
       empty,
     ];
 
-    setBanks(next);
+    setBanks(
+      next
+    );
 
-    setBankId(id);
+    setBankId(
+      id
+    );
 
     localStorage.setItem(
       STORAGE_KEY,
@@ -1016,11 +1098,12 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     PROCESSAMENTO DO STREAM NDJSON
+     PROCESSAR STREAM
   ========================================================== */
 
   async function processStream(
-    response: Response,
+    response:
+      Response,
 
     operation:
       | "conciliacao"
@@ -1035,23 +1118,22 @@ export default function MainApp() {
     }
 
     const reader =
-      response.body.getReader();
+      response.body
+        .getReader();
 
     const decoder =
       new TextDecoder();
 
-    let buffer = "";
-
-    /* ========================================================
-       PROCESSAR UM EVENTO
-    ======================================================== */
+    let buffer =
+      "";
 
     function processEvent(
-      event: any
+      event:
+        any
     ) {
-      /* ------------------------------------------------------
+      /* -----------------------------------------------
          INÍCIO / STATUS
-      ------------------------------------------------------ */
+      ------------------------------------------------ */
 
       if (
         event.type ===
@@ -1060,7 +1142,8 @@ export default function MainApp() {
           "status"
       ) {
         setProgress({
-          active: true,
+          active:
+            true,
 
           type:
             operation,
@@ -1085,16 +1168,17 @@ export default function MainApp() {
         return;
       }
 
-      /* ------------------------------------------------------
-         REGISTRO CONCLUÍDO
-      ------------------------------------------------------ */
+      /* -----------------------------------------------
+         LINHA CONCLUÍDA
+      ------------------------------------------------ */
 
       if (
         event.type ===
         "progress"
       ) {
         setProgress({
-          active: true,
+          active:
+            true,
 
           type:
             operation,
@@ -1116,10 +1200,6 @@ export default function MainApp() {
             "",
         });
 
-        /*
-         * Atualiza somente a linha
-         * que acabou de ser processada.
-         */
         if (
           event.result
         ) {
@@ -1142,9 +1222,9 @@ export default function MainApp() {
         return;
       }
 
-      /* ------------------------------------------------------
+      /* -----------------------------------------------
          ERRO GERAL
-      ------------------------------------------------------ */
+      ------------------------------------------------ */
 
       if (
         event.type ===
@@ -1156,23 +1236,17 @@ export default function MainApp() {
         );
       }
 
-      /* ------------------------------------------------------
-         CONCLUÍDO
-      ------------------------------------------------------ */
+      /* -----------------------------------------------
+         FINAL
+      ------------------------------------------------ */
 
       if (
         event.type ===
         "done"
       ) {
-        /*
-         * Mantemos momentaneamente
-         * o progresso em 100%.
-         *
-         * O finally de conciliar/baixar
-         * irá ocultar depois.
-         */
         setProgress({
-          active: true,
+          active:
+            true,
 
           type:
             operation,
@@ -1193,13 +1267,11 @@ export default function MainApp() {
             event.label ||
             "Concluído.",
         });
-
-        return;
       }
     }
 
     /* ========================================================
-       LEITURA DO STREAM
+       LER STREAM
     ======================================================== */
 
     while (true) {
@@ -1217,19 +1289,11 @@ export default function MainApp() {
         decoder.decode(
           value,
           {
-            stream: true,
+            stream:
+              true,
           }
         );
 
-      /*
-       * O servidor envia:
-       *
-       * JSON\n
-       * padding\n
-       *
-       * As linhas de padding são
-       * ignoradas pelo trim().
-       */
       const linhas =
         buffer.split(
           "\n"
@@ -1250,49 +1314,31 @@ export default function MainApp() {
           continue;
         }
 
-        try {
-          const event =
-            JSON.parse(
-              texto
-            );
-
-          processEvent(
-            event
+        const event =
+          JSON.parse(
+            texto
           );
-        } catch (error) {
-          /*
-           * Se for um erro disparado
-           * pelo próprio evento da API,
-           * precisa subir para o catch
-           * de conciliar/baixar.
-           */
-          if (
-            error instanceof Error &&
-            texto.startsWith(
-              "{"
-            )
-          ) {
-            throw error;
-          }
-        }
+
+        processEvent(
+          event
+        );
       }
     }
 
     /* ========================================================
-       PROCESSAR EVENTUAL RESTO
+       EVENTUAL RESTO
     ======================================================== */
 
     const restante =
       buffer.trim();
 
-    if (restante) {
-      const event =
+    if (
+      restante
+    ) {
+      processEvent(
         JSON.parse(
           restante
-        );
-
-      processEvent(
-        event
+        )
       );
     }
   }
@@ -1311,21 +1357,24 @@ export default function MainApp() {
     }
 
     if (
-      !bank.mapping.valor
+      !bank.mapping
+        .valor
     ) {
       return setMessage(
         "Configure a coluna Valor do banco."
       );
     }
 
-    setBusy(true);
+    setBusy(
+      true
+    );
 
     setMessage(
       "Iniciando conciliação..."
     );
 
     /* ========================================================
-       COLOCAR LINHAS COMO CONCILIANDO
+       RESETAR RESULTADOS ANTERIORES
     ======================================================== */
 
     setRows(
@@ -1340,10 +1389,6 @@ export default function MainApp() {
             statusMensagem:
               "Aguardando processamento...",
 
-            /*
-             * Remove resultado de
-             * conciliação anterior.
-             */
             tituloId:
               undefined,
 
@@ -1354,6 +1399,9 @@ export default function MainApp() {
               undefined,
 
             parcelaM8:
+              undefined,
+
+            baixaM8:
               undefined,
 
             fornecedorNome:
@@ -1372,12 +1420,14 @@ export default function MainApp() {
     );
 
     setProgress({
-      active: true,
+      active:
+        true,
 
       type:
         "conciliacao",
 
-      current: 0,
+      current:
+        0,
 
       total:
         rows.length,
@@ -1399,13 +1449,6 @@ export default function MainApp() {
                 "application/json",
             },
 
-            /*
-             * IMPORTANTE:
-             *
-             * Enviamos rows original.
-             * Filtros/classificação não
-             * alteram a conciliação.
-             */
             body:
               JSON.stringify({
                 company,
@@ -1417,7 +1460,8 @@ export default function MainApp() {
       if (
         !response.ok
       ) {
-        let errorText = "";
+        let errorText =
+          "";
 
         try {
           errorText =
@@ -1445,12 +1489,6 @@ export default function MainApp() {
           : "Erro na conciliação."
       );
 
-      /*
-       * Somente registros que ainda
-       * estavam processando recebem erro.
-       *
-       * Os já concluídos permanecem.
-       */
       setRows(
         (old) =>
           old.map(
@@ -1470,22 +1508,22 @@ export default function MainApp() {
           )
       );
     } finally {
-      setBusy(false);
+      setBusy(
+        false
+      );
 
-      /*
-       * Dá um pequeno tempo para
-       * o usuário enxergar 100%.
-       */
       setTimeout(
         () => {
           setProgress(
             (old) => ({
               ...old,
+
               active:
                 false,
             })
           );
         },
+
         700
       );
     }
@@ -1496,6 +1534,12 @@ export default function MainApp() {
   ========================================================== */
 
   async function baixar() {
+    /*
+     * SOMENTE "pronto".
+     *
+     * ja_baixada e parcialmente_baixada
+     * nunca entram aqui.
+     */
     const aptas =
       rows.filter(
         (r) =>
@@ -1512,7 +1556,7 @@ export default function MainApp() {
     }
 
     /* ========================================================
-       VALIDAR CONFIGURAÇÃO ANTES DE ENVIAR
+       CONFIGURAÇÃO M8
     ======================================================== */
 
     if (
@@ -1550,29 +1594,34 @@ export default function MainApp() {
 
     const total =
       aptas.reduce(
-        (a, r) =>
-          a +
-          (r.valor || 0),
+        (
+          valor,
+          r
+        ) =>
+          valor +
+          (r.valor ||
+            0),
+
         0
       );
 
     if (
       !confirm(
-        `Confirma a baixa de ${aptas.length} parcela(s), totalizando ${money(total)}?`
+        `Confirma a baixa de ${aptas.length} parcela(s), totalizando ${money(
+          total
+        )}?`
       )
     ) {
       return;
     }
 
-    setBusy(true);
+    setBusy(
+      true
+    );
 
     setMessage(
       "Iniciando baixa das parcelas..."
     );
-
-    /* ========================================================
-       MARCAR COMO BAIXANDO
-    ======================================================== */
 
     const idsAptas =
       new Set(
@@ -1606,12 +1655,14 @@ export default function MainApp() {
     );
 
     setProgress({
-      active: true,
+      active:
+        true,
 
       type:
         "baixa",
 
-      current: 0,
+      current:
+        0,
 
       total:
         aptas.length,
@@ -1649,7 +1700,8 @@ export default function MainApp() {
       if (
         !response.ok
       ) {
-        let errorText = "";
+        let errorText =
+          "";
 
         try {
           errorText =
@@ -1696,29 +1748,34 @@ export default function MainApp() {
           )
       );
     } finally {
-      setBusy(false);
+      setBusy(
+        false
+      );
 
       setTimeout(
         () => {
           setProgress(
             (old) => ({
               ...old,
+
               active:
                 false,
             })
           );
         },
+
         700
       );
     }
   }
 
   /* ==========================================================
-     ABRIR DETALHES DO TÍTULO
+     DETALHES DO TÍTULO
   ========================================================== */
 
   function abrirTitulo(
-    row: NormalizedCsvRow
+    row:
+      NormalizedCsvRow
   ) {
     if (
       !row.tituloM8
@@ -1730,10 +1787,6 @@ export default function MainApp() {
       return;
     }
 
-    /*
-     * Sempre inicia com
-     * JSON completo fechado.
-     */
     setShowFullPayload(
       false
     );
@@ -1751,11 +1804,12 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     ABRIR DETALHES DA PARCELA
+     DETALHES DA PARCELA
   ========================================================== */
 
   function abrirParcela(
-    row: NormalizedCsvRow
+    row:
+      NormalizedCsvRow
   ) {
     if (
       !row.parcelaM8
@@ -1784,7 +1838,7 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     FECHAR MODAL
+     FECHAR DETALHES
   ========================================================== */
 
   function fecharDetalhes() {
@@ -1798,7 +1852,7 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     COPIAR PAYLOAD
+     COPIAR JSON
   ========================================================== */
 
   async function copiarPayload() {
@@ -1809,13 +1863,15 @@ export default function MainApp() {
     }
 
     try {
-      await navigator.clipboard.writeText(
-        JSON.stringify(
-          detailModal.data,
-          null,
-          2
-        )
-      );
+      await navigator
+        .clipboard
+        .writeText(
+          JSON.stringify(
+            detailModal.data,
+            null,
+            2
+          )
+        );
 
       setMessage(
         "Payload copiado para a área de transferência."
@@ -1836,9 +1892,14 @@ export default function MainApp() {
     label,
     className = "",
   }: {
-    column: SortKey;
-    label: string;
-    className?: string;
+    column:
+      SortKey;
+
+    label:
+      string;
+
+    className?:
+      string;
   }) {
     const active =
       sortKey ===
@@ -1928,12 +1989,17 @@ export default function MainApp() {
           <input
             type="number"
             min="1"
-            value={company}
-            disabled={busy}
+            value={
+              company
+            }
+            disabled={
+              busy
+            }
             onChange={(e) =>
               setCompany(
                 Number(
-                  e.target.value
+                  e.target
+                    .value
                 ) || 1
               )
             }
@@ -1944,19 +2010,28 @@ export default function MainApp() {
           Banco
 
           <select
-            value={bankId}
-            disabled={busy}
+            value={
+              bankId
+            }
+            disabled={
+              busy
+            }
             onChange={(e) =>
               setBankId(
-                e.target.value
+                e.target
+                  .value
               )
             }
           >
             {banks.map(
               (b) => (
                 <option
-                  key={b.id}
-                  value={b.id}
+                  key={
+                    b.id
+                  }
+                  value={
+                    b.id
+                  }
                 >
                   {b.nome}
                 </option>
@@ -1969,7 +2044,9 @@ export default function MainApp() {
 
           <button
             className="button secondary"
-            disabled={busy}
+            disabled={
+              busy
+            }
             onClick={() =>
               setShowConfig(
                 true
@@ -1981,7 +2058,9 @@ export default function MainApp() {
 
           <button
             className="link-button"
-            disabled={busy}
+            disabled={
+              busy
+            }
             onClick={
               newBank
             }
@@ -1997,7 +2076,9 @@ export default function MainApp() {
           <input
             type="file"
             accept=".csv,text/csv"
-            disabled={busy}
+            disabled={
+              busy
+            }
             onChange={
               chooseFile
             }
@@ -2012,7 +2093,7 @@ export default function MainApp() {
       </section>
 
       {/* ======================================================
-          MENSAGEM
+          AVISO
       ====================================================== */}
 
       {message && (
@@ -2022,7 +2103,7 @@ export default function MainApp() {
       )}
 
       {/* ======================================================
-          BARRA DE PROGRESSO
+          PROGRESSO
       ====================================================== */}
 
       {progress.active && (
@@ -2050,7 +2131,6 @@ export default function MainApp() {
           </div>
 
           <div className="progress-track">
-
             <div
               className="progress-bar"
               style={{
@@ -2058,7 +2138,6 @@ export default function MainApp() {
                   `${progressPercent}%`,
               }}
             />
-
           </div>
 
           <div className="progress-counter">
@@ -2152,10 +2231,13 @@ export default function MainApp() {
             <input
               className="search"
               placeholder="Pesquisar em toda a tabela..."
-              value={query}
+              value={
+                query
+              }
               onChange={(e) =>
                 setQuery(
-                  e.target.value
+                  e.target
+                    .value
                 )
               }
             />
@@ -2209,7 +2291,6 @@ export default function MainApp() {
 
         {rows.length > 0 && (
           <div className="table-summary">
-
             Exibindo{" "}
 
             <strong>
@@ -2223,14 +2304,6 @@ export default function MainApp() {
             </strong>
 
             {" "}registro(s)
-
-            {sortKey &&
-              sortDirection && (
-                <>
-                  {" "}· Classificação ativa
-                </>
-              )}
-
           </div>
         )}
 
@@ -2243,10 +2316,6 @@ export default function MainApp() {
           <table>
 
             <thead>
-
-              {/* ===============================================
-                  CABEÇALHO
-              =============================================== */}
 
               <tr>
 
@@ -2320,12 +2389,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="Cliente"
                     value={
-                      columnFilters.cliente
+                      columnFilters
+                        .cliente
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "cliente",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2336,12 +2407,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="Documento"
                     value={
-                      columnFilters.documento
+                      columnFilters
+                        .documento
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "documento",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2352,12 +2425,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="dd/mm/aaaa"
                     value={
-                      columnFilters.vencimento
+                      columnFilters
+                        .vencimento
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "vencimento",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2368,12 +2443,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="dd/mm/aaaa"
                     value={
-                      columnFilters.pagamento
+                      columnFilters
+                        .pagamento
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "pagamento",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2384,12 +2461,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="Valor"
                     value={
-                      columnFilters.valor
+                      columnFilters
+                        .valor
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "valor",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2400,12 +2479,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="Título"
                     value={
-                      columnFilters.titulo
+                      columnFilters
+                        .titulo
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "titulo",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2416,12 +2497,14 @@ export default function MainApp() {
                     className="column-filter"
                     placeholder="Parcela"
                     value={
-                      columnFilters.parcela
+                      columnFilters
+                        .parcela
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "parcela",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   />
@@ -2431,12 +2514,14 @@ export default function MainApp() {
                   <select
                     className="column-filter"
                     value={
-                      columnFilters.status
+                      columnFilters
+                        .status
                     }
                     onChange={(e) =>
                       setColumnFilter(
                         "status",
-                        e.target.value
+                        e.target
+                          .value
                       )
                     }
                   >
@@ -2454,7 +2539,7 @@ export default function MainApp() {
                     </option>
 
                     <option value="pronto">
-                      Pronto
+                      Pronto para baixa
                     </option>
 
                     <option value="baixando">
@@ -2462,7 +2547,15 @@ export default function MainApp() {
                     </option>
 
                     <option value="baixada">
-                      Baixada
+                      Parcela baixada
+                    </option>
+
+                    <option value="ja_baixada">
+                      Já baixada no M8
+                    </option>
+
+                    <option value="parcialmente_baixada">
+                      Baixa parcial
                     </option>
 
                     <option value="nao_encontrado">
@@ -2490,29 +2583,23 @@ export default function MainApp() {
 
             </thead>
 
-            {/* =================================================
-                CORPO
-            ================================================= */}
-
             <tbody>
 
               {displayedRows.length ===
               0 ? (
 
                 <tr>
-
                   <td
-                    colSpan={10}
+                    colSpan={
+                      10
+                    }
                     className="empty"
                   >
-
                     {rows.length ===
                     0
                       ? "Importe um arquivo CSV para visualizar os registros."
                       : "Nenhum registro encontrado com os filtros informados."}
-
                   </td>
-
                 </tr>
 
               ) : (
@@ -2559,7 +2646,7 @@ export default function MainApp() {
                       </td>
 
                       {/* =======================================
-                          TÍTULO M8
+                          TÍTULO
                       ======================================= */}
 
                       <td>
@@ -2590,7 +2677,7 @@ export default function MainApp() {
                       </td>
 
                       {/* =======================================
-                          PARCELA M8
+                          PARCELA
                       ======================================= */}
 
                       <td>
@@ -2694,7 +2781,7 @@ export default function MainApp() {
           </b>
 
           <span>
-            Contas a Pagar
+            Todos os Títulos
           </span>
         </div>
 
@@ -2706,7 +2793,7 @@ export default function MainApp() {
           </b>
 
           <span>
-            Parcelas em Aberto
+            Parcelas
           </span>
         </div>
 
@@ -2761,7 +2848,7 @@ export default function MainApp() {
       />
 
       {/* ======================================================
-          MODAL DE DETALHES M8
+          MODAL DETALHES M8
       ====================================================== */}
 
       {detailModal && (
@@ -2816,7 +2903,7 @@ export default function MainApp() {
             </div>
 
             {/* =================================================
-                INFORMAÇÕES EM LISTA
+                LISTA
             ================================================= */}
 
             <div className="payload-list">
@@ -2901,16 +2988,11 @@ export default function MainApp() {
                       ? "open"
                       : ""
                   }`}
-                  aria-hidden="true"
                 >
                   ▼
                 </span>
 
               </button>
-
-              {/* ===============================================
-                  JSON EXPANDIDO
-              =============================================== */}
 
               {showFullPayload && (
 
@@ -2947,10 +3029,6 @@ export default function MainApp() {
               )}
 
             </div>
-
-            {/* =================================================
-                AÇÕES
-            ================================================= */}
 
             <div className="modal-actions">
 

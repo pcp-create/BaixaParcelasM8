@@ -733,6 +733,7 @@ th.right .sort-header span:first-child {
 
 .status {
   display: inline-flex;
+  align-items: center;
 
   padding: 5px 8px;
 
@@ -741,13 +742,25 @@ th.right .sort-header span:first-child {
   font-size: 11px;
   font-weight: 750;
 
+  line-height: 1.25;
+
   white-space: nowrap;
 }
+
+
+/* ============================================================
+   AGUARDANDO
+============================================================ */
 
 .status-aguardando {
   background: #edf1f5;
   color: #5a6877;
 }
+
+
+/* ============================================================
+   PROCESSANDO
+============================================================ */
 
 .status-conciliando,
 .status-baixando {
@@ -755,21 +768,67 @@ th.right .sort-header span:first-child {
   color: #245f9f;
 }
 
+
+/* ============================================================
+   PRONTO PARA BAIXA
+============================================================ */
+
 .status-pronto {
   background: #e4f7ed;
   color: #17623b;
 }
+
+
+/* ============================================================
+   BAIXADA NESTA OPERAÇÃO
+============================================================ */
 
 .status-baixada {
   background: #d9f5e5;
   color: #0e6a3b;
 }
 
+
+/* ============================================================
+   JÁ ESTAVA BAIXADA NO M8
+============================================================ */
+
+.status-ja_baixada {
+  background: #e4eefb;
+  color: #24578d;
+
+  border:
+    1px solid #c8dbf1;
+}
+
+
+/* ============================================================
+   BAIXA PARCIAL
+============================================================ */
+
+.status-parcialmente_baixada {
+  background: #fff0d6;
+  color: #8a5800;
+
+  border:
+    1px solid #f1d49f;
+}
+
+
+/* ============================================================
+   NÃO ENCONTRADO / CONFLITO
+============================================================ */
+
 .status-nao_encontrado,
 .status-conflito {
   background: #fff2d8;
   color: #8a5c05;
 }
+
+
+/* ============================================================
+   ERRO
+============================================================ */
 
 .status-erro {
   background: #ffe3e1;
