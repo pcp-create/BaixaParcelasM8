@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import defaultBanks from "@/data/bancos.json";
+
 import {
   BankConfig,
   NormalizedCsvRow,
@@ -31,7 +32,9 @@ const STORAGE_KEY =
 function money(
   v: number | null | undefined
 ) {
-  if (v == null) return "—";
+  if (v == null) {
+    return "—";
+  }
 
   return new Intl.NumberFormat(
     "pt-BR",
@@ -42,11 +45,17 @@ function money(
   ).format(v);
 }
 
-function dateBr(v: string) {
-  if (!v) return "—";
+function dateBr(
+  v: string
+) {
+  if (!v) {
+    return "—";
+  }
 
   const m =
-    /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      v
+    );
 
   return m
     ? `${m[3]}/${m[2]}/${m[1]}`
@@ -54,7 +63,7 @@ function dateBr(v: string) {
 }
 
 /* ============================================================
-   CLASSIFICAÇÃO
+   SORT
 ============================================================ */
 
 type SortKey =
@@ -89,16 +98,59 @@ interface ColumnFilters {
   status: string;
 }
 
-const EMPTY_FILTERS: ColumnFilters = {
-  cliente: "",
-  documento: "",
-  vencimento: "",
-  pagamento: "",
-  valor: "",
-  titulo: "",
-  parcela: "",
-  status: "",
-};
+const EMPTY_FILTERS: ColumnFilters =
+  {
+    cliente: "",
+    documento: "",
+    vencimento: "",
+    pagamento: "",
+    valor: "",
+    titulo: "",
+    parcela: "",
+    status: "",
+  };
+
+/* ============================================================
+   PROGRESSO
+============================================================ */
+
+interface ProgressState {
+  active: boolean;
+
+  type:
+    | "conciliacao"
+    | "baixa"
+    | "";
+
+  current: number;
+
+  total: number;
+
+  label: string;
+}
+
+const INITIAL_PROGRESS: ProgressState =
+  {
+    active: false,
+    type: "",
+    current: 0,
+    total: 0,
+    label: "",
+  };
+
+/* ============================================================
+   MODAL M8
+============================================================ */
+
+interface DetailModalState {
+  title: string;
+
+  subtitle: string;
+
+  data:
+    | Record<string, any>
+    | null;
+}
 
 /* ============================================================
    COMPONENTE
@@ -111,7 +163,9 @@ export default function MainApp() {
     );
 
   const [bankId, setBankId] =
-    useState("banco-teste");
+    useState(
+      "banco-teste"
+    );
 
   const [company, setCompany] =
     useState(1);
@@ -123,12 +177,19 @@ export default function MainApp() {
     useState<
       Array<{
         numeroLinha: number;
-        values: Record<string, string>;
+
+        values:
+          Record<
+            string,
+            string
+          >;
       }>
     >([]);
 
   const [rows, setRows] =
-    useState<NormalizedCsvRow[]>([]);
+    useState<
+      NormalizedCsvRow[]
+    >([]);
 
   const [fileName, setFileName] =
     useState("");
@@ -139,32 +200,27 @@ export default function MainApp() {
   const [message, setMessage] =
     useState("");
 
-  const [showConfig, setShowConfig] =
+  const [
+    showConfig,
+    setShowConfig,
+  ] =
     useState(false);
-
-  /* ==========================================================
-     PESQUISA GERAL
-  ========================================================== */
 
   const [query, setQuery] =
     useState("");
 
-  /* ==========================================================
-     CLASSIFICAÇÃO
-  ========================================================== */
-
   const [sortKey, setSortKey] =
-    useState<SortKey | null>(null);
+    useState<
+      SortKey | null
+    >(null);
 
   const [
     sortDirection,
     setSortDirection,
   ] =
-    useState<SortDirection>(null);
-
-  /* ==========================================================
-     FILTROS DAS COLUNAS
-  ========================================================== */
+    useState<SortDirection>(
+      null
+    );
 
   const [
     columnFilters,
@@ -174,8 +230,24 @@ export default function MainApp() {
       EMPTY_FILTERS
     );
 
+  const [
+    progress,
+    setProgress,
+  ] =
+    useState<ProgressState>(
+      INITIAL_PROGRESS
+    );
+
+  const [
+    detailModal,
+    setDetailModal,
+  ] =
+    useState<DetailModalState | null>(
+      null
+    );
+
   /* ==========================================================
-     CARREGAR CONFIGURAÇÕES DOS BANCOS
+     BANCOS
   ========================================================== */
 
   useEffect(() => {
@@ -187,7 +259,9 @@ export default function MainApp() {
     if (saved) {
       try {
         setBanks(
-          JSON.parse(saved)
+          JSON.parse(
+            saved
+          )
         );
       } catch {}
     }
@@ -198,10 +272,6 @@ export default function MainApp() {
       (b) =>
         b.id === bankId
     ) || banks[0];
-
-  /* ==========================================================
-     RENORMALIZAR CSV AO TROCAR BANCO
-  ========================================================== */
 
   useEffect(() => {
     if (
@@ -263,19 +333,36 @@ export default function MainApp() {
             .reduce(
               (a, r) =>
                 a +
-                (r.valor || 0),
+                (r.valor ||
+                  0),
               0
             ),
       }),
+
       [rows]
     );
 
   /* ==========================================================
-     ALTERAR FILTRO
+     PROGRESSO %
+  ========================================================== */
+
+  const progressPercent =
+    progress.total > 0
+      ? Math.round(
+          (progress.current /
+            progress.total) *
+            100
+        )
+      : 0;
+
+  /* ==========================================================
+     FILTROS
   ========================================================== */
 
   function setColumnFilter(
-    key: keyof ColumnFilters,
+    key:
+      keyof ColumnFilters,
+
     value: string
   ) {
     setColumnFilters(
@@ -286,41 +373,32 @@ export default function MainApp() {
     );
   }
 
-  /* ==========================================================
-     LIMPAR FILTROS
-  ========================================================== */
-
   function clearFilters() {
     setQuery("");
 
-    setColumnFilters(
-      EMPTY_FILTERS
-    );
+    setColumnFilters({
+      ...EMPTY_FILTERS,
+    });
   }
 
-  /* ==========================================================
-     SABER SE EXISTE FILTRO ATIVO
-  ========================================================== */
-
   const hasActiveFilters =
-    useMemo(() => {
-      return (
-        query.trim() !== "" ||
+    useMemo(
+      () =>
+        query.trim() !==
+          "" ||
         Object.values(
           columnFilters
         ).some(
           (value) =>
-            value.trim() !== ""
-        )
-      );
-    }, [
-      query,
-      columnFilters,
-    ]);
+            value.trim() !==
+            ""
+        ),
 
-  /* ==========================================================
-     FILTRAGEM
-  ========================================================== */
+      [
+        query,
+        columnFilters,
+      ]
+    );
 
   const filteredRows =
     useMemo(() => {
@@ -331,10 +409,6 @@ export default function MainApp() {
 
       return rows.filter(
         (r) => {
-          /* -----------------------------------------------
-             PESQUISA GERAL
-          ------------------------------------------------ */
-
           if (
             globalQuery
           ) {
@@ -343,11 +417,9 @@ export default function MainApp() {
                 r.numeroLinha,
                 r.cliente,
                 r.documento,
-                r.dataVencimento,
                 dateBr(
                   r.dataVencimento
                 ),
-                r.dataPagamento,
                 dateBr(
                   r.dataPagamento
                 ),
@@ -375,45 +447,33 @@ export default function MainApp() {
             }
           }
 
-          /* -----------------------------------------------
-             CLIENTE
-          ------------------------------------------------ */
-
           if (
             columnFilters.cliente &&
             !String(
-              r.cliente || ""
+              r.cliente ||
+                ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.cliente
-                  .toLowerCase()
+                columnFilters.cliente.toLowerCase()
               )
           ) {
             return false;
           }
-
-          /* -----------------------------------------------
-             DOCUMENTO
-          ------------------------------------------------ */
 
           if (
             columnFilters.documento &&
             !String(
-              r.documento || ""
+              r.documento ||
+                ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.documento
-                  .toLowerCase()
+                columnFilters.documento.toLowerCase()
               )
           ) {
             return false;
           }
-
-          /* -----------------------------------------------
-             VENCIMENTO
-          ------------------------------------------------ */
 
           if (
             columnFilters.vencimento
@@ -425,17 +485,12 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.vencimento
-                  .toLowerCase()
+                columnFilters.vencimento.toLowerCase()
               )
             ) {
               return false;
             }
           }
-
-          /* -----------------------------------------------
-             PAGAMENTO
-          ------------------------------------------------ */
 
           if (
             columnFilters.pagamento
@@ -447,17 +502,12 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.pagamento
-                  .toLowerCase()
+                columnFilters.pagamento.toLowerCase()
               )
             ) {
               return false;
             }
           }
-
-          /* -----------------------------------------------
-             VALOR
-          ------------------------------------------------ */
 
           if (
             columnFilters.valor
@@ -469,22 +519,18 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.valor
-                  .toLowerCase()
+                columnFilters.valor.toLowerCase()
               )
             ) {
               return false;
             }
           }
 
-          /* -----------------------------------------------
-             TÍTULO
-          ------------------------------------------------ */
-
           if (
             columnFilters.titulo &&
             !String(
-              r.tituloId ?? ""
+              r.tituloId ??
+                ""
             ).includes(
               columnFilters.titulo
             )
@@ -492,24 +538,17 @@ export default function MainApp() {
             return false;
           }
 
-          /* -----------------------------------------------
-             PARCELA
-          ------------------------------------------------ */
-
           if (
             columnFilters.parcela &&
             !String(
-              r.parcelaId ?? ""
+              r.parcelaId ??
+                ""
             ).includes(
               columnFilters.parcela
             )
           ) {
             return false;
           }
-
-          /* -----------------------------------------------
-             STATUS
-          ------------------------------------------------ */
 
           if (
             columnFilters.status &&
@@ -529,11 +568,7 @@ export default function MainApp() {
     ]);
 
   /* ==========================================================
-     ALTERAR CLASSIFICAÇÃO
-
-     1º clique = crescente
-     2º clique = decrescente
-     3º clique = remove classificação
+     CLASSIFICAÇÃO
   ========================================================== */
 
   function handleSort(
@@ -543,6 +578,7 @@ export default function MainApp() {
       sortKey !== key
     ) {
       setSortKey(key);
+
       setSortDirection(
         "asc"
       );
@@ -561,27 +597,12 @@ export default function MainApp() {
       return;
     }
 
-    if (
-      sortDirection ===
-      "desc"
-    ) {
-      setSortKey(null);
-      setSortDirection(
-        null
-      );
+    setSortKey(null);
 
-      return;
-    }
-
-    setSortKey(key);
     setSortDirection(
-      "asc"
+      null
     );
   }
-
-  /* ==========================================================
-     ÍCONE DA CLASSIFICAÇÃO
-  ========================================================== */
 
   function sortIcon(
     key: SortKey
@@ -599,14 +620,6 @@ export default function MainApp() {
       : "↓";
   }
 
-  /* ==========================================================
-     LINHAS ORDENADAS
-
-     IMPORTANTE:
-     [...filteredRows] cria uma cópia.
-     O array original "rows" NÃO é alterado.
-  ========================================================== */
-
   const displayedRows =
     useMemo(() => {
       if (
@@ -620,19 +633,23 @@ export default function MainApp() {
         ...filteredRows,
       ].sort(
         (a, b) => {
-          let valueA: any =
+          let valueA:
+            any =
             a[sortKey];
 
-          let valueB: any =
+          let valueB:
+            any =
             b[sortKey];
 
-          /* -----------------------------------------------
-             VALOR
-          ------------------------------------------------ */
-
           if (
-            sortKey ===
-            "valor"
+            [
+              "numeroLinha",
+              "valor",
+              "tituloId",
+              "parcelaId",
+            ].includes(
+              sortKey
+            )
           ) {
             valueA =
               Number(
@@ -644,52 +661,6 @@ export default function MainApp() {
                 valueB ?? 0
               );
           }
-
-          /* -----------------------------------------------
-             LINHA / TÍTULO / PARCELA
-          ------------------------------------------------ */
-
-          if (
-            sortKey ===
-              "numeroLinha" ||
-            sortKey ===
-              "tituloId" ||
-            sortKey ===
-              "parcelaId"
-          ) {
-            valueA =
-              Number(
-                valueA ?? 0
-              );
-
-            valueB =
-              Number(
-                valueB ?? 0
-              );
-          }
-
-          /* -----------------------------------------------
-             DATAS
-
-             YYYY-MM-DD permite comparação direta.
-          ------------------------------------------------ */
-
-          if (
-            sortKey ===
-              "dataVencimento" ||
-            sortKey ===
-              "dataPagamento"
-          ) {
-            valueA =
-              valueA || "";
-
-            valueB =
-              valueB || "";
-          }
-
-          /* -----------------------------------------------
-             NÚMEROS
-          ------------------------------------------------ */
 
           if (
             typeof valueA ===
@@ -707,16 +678,14 @@ export default function MainApp() {
               : -result;
           }
 
-          /* -----------------------------------------------
-             TEXTO
-          ------------------------------------------------ */
-
           const result =
             String(
-              valueA ?? ""
+              valueA ??
+                ""
             ).localeCompare(
               String(
-                valueB ?? ""
+                valueB ??
+                  ""
               ),
               "pt-BR",
               {
@@ -741,21 +710,26 @@ export default function MainApp() {
     ]);
 
   /* ==========================================================
-     ESCOLHER ARQUIVO
+     CSV
   ========================================================== */
 
   async function chooseFile(
     e: ChangeEvent<HTMLInputElement>
   ) {
     const file =
-      e.target.files?.[0];
+      e.target
+        .files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (
       !file.name
         .toLowerCase()
-        .endsWith(".csv")
+        .endsWith(
+          ".csv"
+        )
     ) {
       setMessage(
         "Selecione um arquivo .CSV."
@@ -783,15 +757,6 @@ export default function MainApp() {
         file.name
       );
 
-      setMessage(
-        `Arquivo carregado: ${parsed.rows.length} registro(s). Delimitador detectado: ${
-          parsed.delimiter ===
-          "\t"
-            ? "TAB"
-            : parsed.delimiter
-        }`
-      );
-
       setRows(
         normalizeRows(
           parsed.rows,
@@ -799,12 +764,21 @@ export default function MainApp() {
         )
       );
 
-      /* Nova importação começa sem filtros */
       clearFilters();
 
       setSortKey(null);
+
       setSortDirection(
         null
+      );
+
+      setMessage(
+        `Arquivo carregado: ${parsed.rows.length} registro(s). Delimitador detectado: ${
+          parsed.delimiter ===
+          "\t"
+            ? "TAB"
+            : parsed.delimiter
+        }`
       );
     } catch (err) {
       setMessage(
@@ -816,7 +790,7 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     SALVAR BANCO
+     CONFIGURAÇÃO BANCO
   ========================================================== */
 
   function saveBank(
@@ -860,47 +834,43 @@ export default function MainApp() {
     );
   }
 
-  /* ==========================================================
-     NOVO BANCO
-  ========================================================== */
-
   function newBank() {
     const id =
       `banco-${Date.now()}`;
 
-    const empty: BankConfig =
-      {
-        id,
+    const empty:
+      BankConfig = {
+      id,
 
-        nome:
-          "Novo Banco",
+      nome:
+        "Novo Banco",
 
-        mapping: {
-          cliente: "",
-          dataVencimento:
-            "",
-          dataPagamento:
-            "",
-          documento: "",
-          valor: "",
-        },
+      mapping: {
+        cliente: "",
+        dataVencimento:
+          "",
+        dataPagamento:
+          "",
+        documento: "",
+        valor: "",
+      },
 
-        m8: {
-          contaContabilId:
-            0,
+      m8: {
+        contaContabilId:
+          0,
 
-          historicoId:
-            0,
+        historicoId:
+          0,
 
-          meioPagamentoId:
-            0,
+        meioPagamentoId:
+          0,
 
-          observacaoInterna:
-            "Baixa automática via conciliação bancária",
+        observacaoInterna:
+          "Baixa automática via conciliação bancária",
 
-          complemento: "",
-        },
-      };
+        complemento: "",
+      },
+    };
 
     const next = [
       ...banks,
@@ -924,30 +894,203 @@ export default function MainApp() {
   }
 
   /* ==========================================================
+     LEITOR DE STREAM NDJSON
+  ========================================================== */
+
+  async function processStream(
+    response: Response,
+    operation:
+      | "conciliacao"
+      | "baixa"
+  ) {
+    if (
+      !response.body
+    ) {
+      throw new Error(
+        "O navegador não recebeu o fluxo de processamento."
+      );
+    }
+
+    const reader =
+      response.body.getReader();
+
+    const decoder =
+      new TextDecoder();
+
+    let buffer = "";
+
+    while (true) {
+      const {
+        value,
+        done,
+      } =
+        await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer +=
+        decoder.decode(
+          value,
+          {
+            stream:
+              true,
+          }
+        );
+
+      const linhas =
+        buffer.split(
+          "\n"
+        );
+
+      buffer =
+        linhas.pop() ||
+        "";
+
+      for (
+        const linha
+        of linhas
+      ) {
+        if (
+          !linha.trim()
+        ) {
+          continue;
+        }
+
+        const event =
+          JSON.parse(
+            linha
+          );
+
+        if (
+          event.type ===
+            "start" ||
+          event.type ===
+            "status"
+        ) {
+          setProgress({
+            active: true,
+            type:
+              operation,
+
+            current:
+              event.current ??
+              0,
+
+            total:
+              event.total ??
+              0,
+
+            label:
+              event.label ||
+              "",
+          });
+        }
+
+        if (
+          event.type ===
+          "progress"
+        ) {
+          setProgress({
+            active: true,
+            type:
+              operation,
+
+            current:
+              event.current ??
+              0,
+
+            total:
+              event.total ??
+              0,
+
+            label:
+              event.label ||
+              "",
+          });
+
+          if (
+            event.result
+          ) {
+            setRows(
+              (old) =>
+                old.map(
+                  (r) =>
+                    r.rowId ===
+                    event.result
+                      .rowId
+                      ? {
+                          ...r,
+                          ...event.result,
+                        }
+                      : r
+                )
+            );
+          }
+        }
+
+        if (
+          event.type ===
+          "error"
+        ) {
+          throw new Error(
+            event.error ||
+              "Erro durante o processamento."
+          );
+        }
+
+        if (
+          event.type ===
+          "done"
+        ) {
+          setProgress({
+            active: false,
+            type:
+              operation,
+
+            current:
+              event.total ||
+              0,
+
+            total:
+              event.total ||
+              0,
+
+            label:
+              event.label ||
+              "",
+          });
+        }
+      }
+    }
+  }
+
+  /* ==========================================================
      CONCILIAR
   ========================================================== */
 
   async function conciliar() {
-    if (!rows.length) {
+    if (
+      !rows.length
+    ) {
       return setMessage(
         "Importe um CSV antes de conciliar."
       );
     }
 
     if (
-      !bank.mapping
-        .documento ||
       !bank.mapping.valor
     ) {
       return setMessage(
-        "Configure as colunas obrigatórias do banco."
+        "Configure a coluna Valor do banco."
       );
     }
 
     setBusy(true);
 
     setMessage(
-      "Executando ETAPA 1, ETAPA 2 e ETAPA 3..."
+      "Iniciando conciliação..."
     );
 
     setRows(
@@ -960,21 +1103,23 @@ export default function MainApp() {
               "conciliando",
 
             statusMensagem:
-              "Consultando M8...",
+              "Aguardando processamento...",
           })
         )
     );
 
-    try {
-      /*
-       * IMPORTANTE:
-       * A conciliação utiliza "rows",
-       * e NÃO displayedRows.
-       *
-       * Portanto filtros e classificação
-       * não alteram o processamento.
-       */
+    setProgress({
+      active: true,
+      type:
+        "conciliacao",
+      current: 0,
+      total:
+        rows.length,
+      label:
+        "Preparando conciliação...",
+    });
 
+    try {
       const response =
         await fetch(
           "/api/m8/conciliar",
@@ -995,39 +1140,29 @@ export default function MainApp() {
           }
         );
 
-      const data =
-        await response.json();
-
       if (
         !response.ok
       ) {
         throw new Error(
-          data.error ||
-            "Falha na conciliação."
+          `Erro HTTP ${response.status}`
         );
       }
 
-      setRows(
-        (old) =>
-          old.map(
-            (r) => ({
-              ...r,
-
-              ...(
-                data.results.find(
-                  (x: any) =>
-                    x.rowId ===
-                    r.rowId
-                ) || {}
-              ),
-            })
-          )
+      await processStream(
+        response,
+        "conciliacao"
       );
 
       setMessage(
         "Conciliação concluída. Revise os registros antes de efetuar a baixa."
       );
     } catch (err) {
+      setMessage(
+        err instanceof Error
+          ? err.message
+          : "Erro na conciliação."
+      );
+
       setRows(
         (old) =>
           old.map(
@@ -1046,14 +1181,15 @@ export default function MainApp() {
                 : r
           )
       );
-
-      setMessage(
-        err instanceof Error
-          ? err.message
-          : "Erro na conciliação."
-      );
     } finally {
       setBusy(false);
+
+      setProgress(
+        (old) => ({
+          ...old,
+          active: false,
+        })
+      );
     }
   }
 
@@ -1062,11 +1198,6 @@ export default function MainApp() {
   ========================================================== */
 
   async function baixar() {
-    /*
-     * Também utiliza "rows".
-     * Classificação e filtros não interferem.
-     */
-
     const aptas =
       rows.filter(
         (r) =>
@@ -1082,16 +1213,18 @@ export default function MainApp() {
       );
     }
 
+    const total =
+      aptas.reduce(
+        (a, r) =>
+          a +
+          (r.valor ||
+            0),
+        0
+      );
+
     if (
       !confirm(
-        `Confirma a baixa de ${aptas.length} parcela(s), totalizando ${money(
-          aptas.reduce(
-            (a, r) =>
-              a +
-              (r.valor || 0),
-            0
-          )
-        )}?`
+        `Confirma a baixa de ${aptas.length} parcela(s), totalizando ${money(total)}?`
       )
     ) {
       return;
@@ -1100,8 +1233,45 @@ export default function MainApp() {
     setBusy(true);
 
     setMessage(
-      "Executando ETAPA 4 — Baixa de parcelas..."
+      "Iniciando baixa das parcelas..."
     );
+
+    setRows(
+      (old) =>
+        old.map(
+          (r) =>
+            r.status ===
+            "pronto"
+              ? {
+                  ...r,
+
+                  status:
+                    "baixando",
+
+                  statusMensagem:
+                    "Aguardando baixa...",
+                }
+              : r
+        )
+    );
+
+    /*
+     * Depois da alteração acima,
+     * aptas continua contendo os objetos
+     * anteriores com status pronto,
+     * que é exatamente o que enviaremos.
+     */
+
+    setProgress({
+      active: true,
+      type:
+        "baixa",
+      current: 0,
+      total:
+        aptas.length,
+      label:
+        "Preparando baixas...",
+    });
 
     try {
       const response =
@@ -1119,41 +1289,27 @@ export default function MainApp() {
             body:
               JSON.stringify({
                 company,
+
                 rows:
                   aptas,
+
                 config:
                   bank.m8,
               }),
           }
         );
 
-      const data =
-        await response.json();
-
       if (
         !response.ok
       ) {
         throw new Error(
-          data.error ||
-            "Falha ao efetuar baixas."
+          `Erro HTTP ${response.status}`
         );
       }
 
-      setRows(
-        (old) =>
-          old.map(
-            (r) => ({
-              ...r,
-
-              ...(
-                data.results.find(
-                  (x: any) =>
-                    x.rowId ===
-                    r.rowId
-                ) || {}
-              ),
-            })
-          )
+      await processStream(
+        response,
+        "baixa"
       );
 
       setMessage(
@@ -1165,13 +1321,111 @@ export default function MainApp() {
           ? err.message
           : "Erro na baixa."
       );
+
+      setRows(
+        (old) =>
+          old.map(
+            (r) =>
+              r.status ===
+              "baixando"
+                ? {
+                    ...r,
+
+                    status:
+                      "erro",
+
+                    statusMensagem:
+                      "Baixa interrompida.",
+                  }
+                : r
+          )
+      );
     } finally {
       setBusy(false);
+
+      setProgress(
+        (old) => ({
+          ...old,
+          active: false,
+        })
+      );
     }
   }
 
   /* ==========================================================
-     BOTÃO DE CABEÇALHO
+     MODAL PAYLOAD
+  ========================================================== */
+
+  function abrirTitulo(
+    row: NormalizedCsvRow
+  ) {
+    if (
+      !row.tituloM8
+    ) {
+      return;
+    }
+
+    setDetailModal({
+      title:
+        `Título M8 ${row.tituloId}`,
+
+      subtitle:
+        "Payload completo retornado pelo endpoint de Contas a Pagar.",
+
+      data:
+        row.tituloM8,
+    });
+  }
+
+  function abrirParcela(
+    row: NormalizedCsvRow
+  ) {
+    if (
+      !row.parcelaM8
+    ) {
+      return;
+    }
+
+    setDetailModal({
+      title:
+        `Parcela M8 ${row.parcelaId}`,
+
+      subtitle:
+        `Payload completo da parcela vinculada ao título ${row.tituloId}.`,
+
+      data:
+        row.parcelaM8,
+    });
+  }
+
+  async function copiarPayload() {
+    if (
+      !detailModal?.data
+    ) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(
+          detailModal.data,
+          null,
+          2
+        )
+      );
+
+      setMessage(
+        "Payload copiado para a área de transferência."
+      );
+    } catch {
+      setMessage(
+        "Não foi possível copiar o payload."
+      );
+    }
+  }
+
+  /* ==========================================================
+     SORT HEADER
   ========================================================== */
 
   function SortHeader({
@@ -1184,7 +1438,8 @@ export default function MainApp() {
     className?: string;
   }) {
     const active =
-      sortKey === column &&
+      sortKey ===
+        column &&
       sortDirection;
 
     return (
@@ -1205,16 +1460,12 @@ export default function MainApp() {
               column
             )
           }
-          title={`Classificar por ${label}`}
         >
           <span>
             {label}
           </span>
 
-          <span
-            className="sort-icon"
-            aria-hidden="true"
-          >
+          <span className="sort-icon">
             {sortIcon(
               column
             )}
@@ -1230,29 +1481,18 @@ export default function MainApp() {
 
   return (
     <main className="container">
-      {/* ======================================================
-          CABEÇALHO
-      ====================================================== */}
-
       <header className="page-header">
         <div>
           <div className="eyebrow">
-            FINANCEIRO · ERP
-            M8
+            FINANCEIRO · ERP M8
           </div>
 
           <h1>
-            Conciliação e
-            Baixa de Parcelas
+            Conciliação e Baixa de Parcelas
           </h1>
 
           <p>
-            Importe o extrato
-            bancário, concilie
-            com as contas a
-            pagar e execute as
-            baixas de forma
-            controlada.
+            Importe o extrato bancário, concilie com as contas a pagar e execute as baixas de forma controlada.
           </p>
         </div>
 
@@ -1263,10 +1503,6 @@ export default function MainApp() {
           </span>
         </div>
       </header>
-
-      {/* ======================================================
-          CONTROLES
-      ====================================================== */}
 
       <section className="panel controls">
         <label>
@@ -1350,19 +1586,53 @@ export default function MainApp() {
         </label>
       </section>
 
-      {/* ======================================================
-          MENSAGEM
-      ====================================================== */}
-
       {message && (
         <div className="notice">
           {message}
         </div>
       )}
 
-      {/* ======================================================
-          INDICADORES
-      ====================================================== */}
+      {/* ====================================================
+          PROGRESSO
+      ==================================================== */}
+
+      {progress.active && (
+        <section className="progress-panel">
+          <div className="progress-info">
+            <div>
+              <strong>
+                {progress.type ===
+                "conciliacao"
+                  ? "Conciliação em andamento"
+                  : "Baixa em andamento"}
+              </strong>
+
+              <span>
+                {progress.label}
+              </span>
+            </div>
+
+            <strong className="progress-percent">
+              {progressPercent}%
+            </strong>
+          </div>
+
+          <div className="progress-track">
+            <div
+              className="progress-bar"
+              style={{
+                width:
+                  `${progressPercent}%`,
+              }}
+            />
+          </div>
+
+          <div className="progress-counter">
+            {progress.current} de{" "}
+            {progress.total} processado(s)
+          </div>
+        </section>
+      )}
 
       <section className="stats">
         <div className="stat">
@@ -1377,8 +1647,7 @@ export default function MainApp() {
 
         <div className="stat">
           <span>
-            Prontos para
-            baixa
+            Prontos para baixa
           </span>
 
           <strong>
@@ -1398,8 +1667,7 @@ export default function MainApp() {
 
         <div className="stat">
           <span>
-            Pendências /
-            erros
+            Pendências / erros
           </span>
 
           <strong>
@@ -1420,23 +1688,15 @@ export default function MainApp() {
         </div>
       </section>
 
-      {/* ======================================================
-          TABELA
-      ====================================================== */}
-
       <section className="panel">
         <div className="toolbar">
           <div>
             <h2>
-              Registros
-              importados
+              Registros importados
             </h2>
 
             <p>
-              O sistema exige
-              correspondência
-              segura antes de
-              permitir a baixa.
+              Clique no número do Título ou da Parcela para visualizar o payload completo retornado pelo M8.
             </p>
           </div>
 
@@ -1454,7 +1714,6 @@ export default function MainApp() {
 
             {hasActiveFilters && (
               <button
-                type="button"
                 className="button secondary"
                 onClick={
                   clearFilters
@@ -1474,8 +1733,7 @@ export default function MainApp() {
                 conciliar
               }
             >
-              1. Conciliar no
-              M8
+              1. Conciliar no M8
             </button>
 
             <button
@@ -1489,48 +1747,27 @@ export default function MainApp() {
                 baixar
               }
             >
-              2. Efetuar baixas
-              ({counts.pronto})
+              2. Efetuar baixas ({counts.pronto})
             </button>
           </div>
         </div>
 
-        {/* ====================================================
-            RESUMO DOS FILTROS
-        ==================================================== */}
-
-        {rows.length >
-          0 && (
+        {rows.length > 0 && (
           <div className="table-summary">
             Exibindo{" "}
             <strong>
-              {
-                displayedRows.length
-              }
+              {displayedRows.length}
             </strong>{" "}
             de{" "}
             <strong>
               {rows.length}
             </strong>{" "}
             registro(s)
-
-            {sortKey &&
-              sortDirection && (
-                <>
-                  {" "}
-                  · Classificação
-                  ativa
-                </>
-              )}
           </div>
         )}
 
         <div className="table-wrap">
           <table>
-            {/* =================================================
-                CABEÇALHO PRINCIPAL
-            ================================================= */}
-
             <thead>
               <tr>
                 <SortHeader
@@ -1585,31 +1822,20 @@ export default function MainApp() {
                 />
               </tr>
 
-              {/* ===============================================
-                  LINHA DE FILTROS
-              =============================================== */}
-
               <tr className="filter-row">
-                <th>
-                  <span className="filter-placeholder">
-                    —
-                  </span>
-                </th>
+                <th>—</th>
 
                 <th>
                   <input
                     className="column-filter"
-                    placeholder="Filtrar cliente"
+                    placeholder="Cliente"
                     value={
                       columnFilters.cliente
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "cliente",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1622,13 +1848,10 @@ export default function MainApp() {
                     value={
                       columnFilters.documento
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "documento",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1641,13 +1864,10 @@ export default function MainApp() {
                     value={
                       columnFilters.vencimento
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "vencimento",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1660,13 +1880,10 @@ export default function MainApp() {
                     value={
                       columnFilters.pagamento
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "pagamento",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1679,13 +1896,10 @@ export default function MainApp() {
                     value={
                       columnFilters.valor
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "valor",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1698,13 +1912,10 @@ export default function MainApp() {
                     value={
                       columnFilters.titulo
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "titulo",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1717,13 +1928,10 @@ export default function MainApp() {
                     value={
                       columnFilters.parcela
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "parcela",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   />
@@ -1735,13 +1943,10 @@ export default function MainApp() {
                     value={
                       columnFilters.status
                     }
-                    onChange={(
-                      e
-                    ) =>
+                    onChange={(e) =>
                       setColumnFilter(
                         "status",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   >
@@ -1749,8 +1954,8 @@ export default function MainApp() {
                       Todos
                     </option>
 
-                    <option value="pendente">
-                      Pendente
+                    <option value="aguardando">
+                      Aguardando
                     </option>
 
                     <option value="conciliando">
@@ -1761,13 +1966,16 @@ export default function MainApp() {
                       Pronto
                     </option>
 
+                    <option value="baixando">
+                      Baixando
+                    </option>
+
                     <option value="baixada">
                       Baixada
                     </option>
 
                     <option value="nao_encontrado">
-                      Não
-                      encontrado
+                      Não encontrado
                     </option>
 
                     <option value="conflito">
@@ -1780,26 +1988,16 @@ export default function MainApp() {
                   </select>
                 </th>
 
-                <th>
-                  <span className="filter-placeholder">
-                    —
-                  </span>
-                </th>
+                <th>—</th>
               </tr>
             </thead>
-
-            {/* =================================================
-                CORPO
-            ================================================= */}
 
             <tbody>
               {displayedRows.length ===
               0 ? (
                 <tr>
                   <td
-                    colSpan={
-                      10
-                    }
+                    colSpan={10}
                     className="empty"
                   >
                     {rows.length ===
@@ -1817,9 +2015,7 @@ export default function MainApp() {
                       }
                     >
                       <td>
-                        {
-                          r.numeroLinha
-                        }
+                        {r.numeroLinha}
                       </td>
 
                       <td>
@@ -1850,14 +2046,50 @@ export default function MainApp() {
                         )}
                       </td>
 
-                      <td>
-                        {r.tituloId ??
-                          "—"}
-                      </td>
+                      {/* TÍTULO M8 */}
 
                       <td>
-                        {r.parcelaId ??
-                          "—"}
+                        {r.tituloId &&
+                        r.tituloM8 ? (
+                          <button
+                            type="button"
+                            className="m8-link"
+                            onClick={() =>
+                              abrirTitulo(
+                                r
+                              )
+                            }
+                            title="Visualizar detalhes do título"
+                          >
+                            {r.tituloId}
+                          </button>
+                        ) : (
+                          r.tituloId ??
+                          "—"
+                        )}
+                      </td>
+
+                      {/* PARCELA M8 */}
+
+                      <td>
+                        {r.parcelaId &&
+                        r.parcelaM8 ? (
+                          <button
+                            type="button"
+                            className="m8-link"
+                            onClick={() =>
+                              abrirParcela(
+                                r
+                              )
+                            }
+                            title="Visualizar detalhes da parcela"
+                          >
+                            {r.parcelaId}
+                          </button>
+                        ) : (
+                          r.parcelaId ??
+                          "—"
+                        )}
                       </td>
 
                       <td>
@@ -1874,9 +2106,13 @@ export default function MainApp() {
                           r.apiError
                         }
                       >
-                        {
-                          r.statusMensagem
-                        }
+                        {r.statusMensagem}
+
+                        {r.apiError && (
+                          <div className="api-error-detail">
+                            {r.apiError}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1887,29 +2123,18 @@ export default function MainApp() {
         </div>
       </section>
 
-      {/* ======================================================
-          FLUXO
-      ====================================================== */}
-
       <section className="flow">
         <div>
-          <b>
-            ETAPA 1
-          </b>
-
+          <b>ETAPA 1</b>
           <span>
-            Autenticação
-            Token
+            Autenticação Token
           </span>
         </div>
 
         <i>→</i>
 
         <div>
-          <b>
-            ETAPA 2
-          </b>
-
+          <b>ETAPA 2</b>
           <span>
             Contas a Pagar
           </span>
@@ -1918,23 +2143,16 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>
-            ETAPA 3
-          </b>
-
+          <b>ETAPA 3</b>
           <span>
-            Parcelas em
-            Aberto
+            Parcelas em Aberto
           </span>
         </div>
 
         <i>→</i>
 
         <div>
-          <b>
-            REVISÃO
-          </b>
-
+          <b>REVISÃO</b>
           <span>
             Conciliação
           </span>
@@ -1943,19 +2161,12 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>
-            ETAPA 4
-          </b>
-
+          <b>ETAPA 4</b>
           <span>
             Baixar Parcelas
           </span>
         </div>
       </section>
-
-      {/* ======================================================
-          CONFIGURAÇÃO DO BANCO
-      ====================================================== */}
 
       <BankConfigModal
         open={
@@ -1974,6 +2185,133 @@ export default function MainApp() {
           saveBank
         }
       />
+
+      {/* ====================================================
+          MODAL DETALHES M8
+      ==================================================== */}
+
+      {detailModal && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={() =>
+            setDetailModal(
+              null
+            )
+          }
+        >
+          <div
+            className="modal m8-detail-modal"
+            onMouseDown={(e) =>
+              e.stopPropagation()
+            }
+          >
+            <div className="modal-title">
+              <div>
+                <div className="eyebrow">
+                  DETALHES ERP M8
+                </div>
+
+                <h2>
+                  {detailModal.title}
+                </h2>
+
+                <p>
+                  {detailModal.subtitle}
+                </p>
+              </div>
+
+              <button
+                className="icon-button"
+                onClick={() =>
+                  setDetailModal(
+                    null
+                  )
+                }
+                title="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* CAMPOS */}
+
+            <div className="payload-grid">
+              {Object.entries(
+                detailModal.data ||
+                  {}
+              ).map(
+                ([
+                  key,
+                  value,
+                ]) => (
+                  <div
+                    className="payload-field"
+                    key={key}
+                  >
+                    <span>
+                      {key}
+                    </span>
+
+                    <strong>
+                      {value ===
+                        null ||
+                      value ===
+                        undefined
+                        ? "—"
+                        : typeof value ===
+                            "object"
+                          ? JSON.stringify(
+                              value
+                            )
+                          : String(
+                              value
+                            )}
+                    </strong>
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* JSON COMPLETO */}
+
+            <div className="payload-json-header">
+              <h3>
+                Payload completo
+              </h3>
+
+              <button
+                className="button secondary"
+                onClick={
+                  copiarPayload
+                }
+              >
+                Copiar JSON
+              </button>
+            </div>
+
+            <pre className="payload-json">
+              {JSON.stringify(
+                detailModal.data,
+                null,
+                2
+              )}
+            </pre>
+
+            <div className="modal-actions">
+              <button
+                className="button secondary"
+                onClick={() =>
+                  setDetailModal(
+                    null
+                  )
+                }
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
