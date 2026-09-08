@@ -335,10 +335,6 @@ export async function autenticarM8(
 export async function listarContasPagar(
   token: string
 ): Promise<M8ContaPagar[]> {
-  /* ==========================================================
-     PARÂMETROS DA CONSULTA
-  ========================================================== */
-
   const params =
     new URLSearchParams({
       PageSize: "0",
@@ -408,10 +404,6 @@ export async function listarContasPagar(
     `${tempo} ms`
   );
 
-  /* ==========================================================
-     DIAGNÓSTICO DA ESTRUTURA
-  ========================================================== */
-
   console.log(
     "[M8] Tipo da resposta:",
     typeof response
@@ -432,10 +424,6 @@ export async function listarContasPagar(
     )
   );
 
-  /* ==========================================================
-     EXTRAIR DATA
-  ========================================================== */
-
   const titulos:
     M8ContaPagar[] =
     Array.isArray(
@@ -449,10 +437,6 @@ export async function listarContasPagar(
     "[M8] TOTAL DE TÍTULOS RECEBIDOS:",
     titulos.length
   );
-
-  /* ==========================================================
-     ERRORS
-  ========================================================== */
 
   if (
     Array.isArray(
@@ -593,7 +577,7 @@ export async function listarContasPagar(
           ) &&
           Math.abs(
             valor -
-              10739
+            10739
           ) <= 0.01;
 
         const saldoOk =
@@ -602,7 +586,7 @@ export async function listarContasPagar(
           ) &&
           Math.abs(
             saldo -
-              10739
+            10739
           ) <= 0.01;
 
         return (
@@ -850,10 +834,6 @@ export async function listarParcelas(
     `[M8] Título ${tituloId}: ${parcelas.length} parcela(s) recebida(s).`
   );
 
-  /* ==========================================================
-     MOSTRAR PARCELAS
-  ========================================================== */
-
   for (
     const parcela
     of parcelas
@@ -917,7 +897,7 @@ export async function listarParcelas(
         (parcela: any) =>
           String(
             parcela?.id ??
-              ""
+            ""
           ).trim() ===
           "60130"
       );
@@ -968,7 +948,21 @@ export interface BaixaPayload {
   valor:
     number;
 
-  chequeId:
+  /*
+   * OPCIONAL.
+   *
+   * Não devemos enviar chequeId = 0 quando a baixa
+   * não estiver relacionada a um cheque.
+   *
+   * O M8 interpreta um número informado como uma referência
+   * para financeiro_cheques.id.
+   *
+   * Portanto:
+   *
+   * - baixa sem cheque  -> propriedade não enviada
+   * - baixa com cheque  -> enviar o ID real do cheque
+   */
+  chequeId?:
     number;
 
   valorJuros:
@@ -1079,6 +1073,30 @@ export async function baixarParcela(
   console.log(
     "[M8] Meio de pagamento:",
     payload.meioPagamentoId
+  );
+
+  /*
+   * Apenas para diagnóstico.
+   * Não exibimos cheque quando ele não foi informado.
+   */
+  if (
+    payload.chequeId !==
+    undefined
+  ) {
+    console.log(
+      "[M8] Cheque:",
+      payload.chequeId
+    );
+  }
+
+  console.log(
+    "[M8] Observação interna:",
+    payload.observacaoInterna
+  );
+
+  console.log(
+    "[M8] Complemento:",
+    payload.complemento
   );
 
   console.log(
