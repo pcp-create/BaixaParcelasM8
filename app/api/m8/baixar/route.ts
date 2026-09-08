@@ -9,16 +9,7 @@ import {
 } from "@/lib/types";
 
 /* ============================================================
-   DATA DO PAGAMENTO → ISO PARA M8
-
-   CSV:
-   2026-09-04
-
-   Payload:
-   2026-09-04T12:00:00.000Z
-
-   Uso 12:00 UTC para evitar mudança involuntária
-   de dia por timezone.
+   DATA DO PAGAMENTO
 ============================================================ */
 
 function dataPagamentoParaIso(
@@ -48,9 +39,6 @@ function dataPagamentoParaIso(
     return `${br[3]}-${br[2]}-${br[1]}T12:00:00.000Z`;
   }
 
-  /*
-   * Caso já venha ISO completo.
-   */
   const data =
     new Date(valor);
 
@@ -69,13 +57,21 @@ function dataPagamentoParaIso(
 
 /* ============================================================
    STREAM
+
+   Padding utilizado para reduzir buffering
+   de pequenos chunks.
 ============================================================ */
 
-function criarLinha(
+const STREAM_PADDING =
+  " ".repeat(2048);
+
+function criarEvento(
   dados: any
 ) {
   return (
     JSON.stringify(dados) +
+    "\n" +
+    STREAM_PADDING +
     "\n"
   );
 }
@@ -92,15 +88,13 @@ export async function POST(
 
   const stream =
     new ReadableStream({
-      async start(
-        controller
-      ) {
+      async start(controller) {
         function enviar(
           dados: any
         ) {
           controller.enqueue(
             encoder.encode(
-              criarLinha(
+              criarEvento(
                 dados
               )
             )
@@ -144,9 +138,7 @@ export async function POST(
             );
           }
 
-          if (
-            !config
-          ) {
+          if (!config) {
             throw new Error(
               "Configuração M8 do banco não informada."
             );
@@ -187,24 +179,17 @@ export async function POST(
           ================================================== */
 
           enviar({
-            type:
-              "start",
-
+            type: "start",
             operation:
               "baixa",
-
-            current:
-              0,
-
-            total:
-              rows.length,
-
+            current: 0,
+            total: rows.length,
             label:
               "Autenticando no M8...",
           });
 
           /* ==================================================
-             AUTENTICAÇÃO UMA ÚNICA VEZ
+             AUTENTICAÇÃO
           ================================================== */
 
           const token =
@@ -212,14 +197,23 @@ export async function POST(
               company
             );
 
+          enviar({
+            type: "status",
+            operation:
+              "baixa",
+            current: 0,
+            total: rows.length,
+            label:
+              "Autenticação concluída. Iniciando baixas...",
+          });
+
           /* ==================================================
-             PROCESSAR
+             PROCESSAMENTO
           ================================================== */
 
           for (
             let index = 0;
-            index <
-            rows.length;
+            index < rows.length;
             index++
           ) {
             const row =
@@ -227,6 +221,18 @@ export async function POST(
 
             const atual =
               index + 1;
+
+            enviar({
+              type: "status",
+              operation:
+                "baixa",
+              current:
+                index,
+              total:
+                rows.length,
+              label:
+                `Baixando ${row.cliente || `parcela ${row.parcelaId}`}`,
+            });
 
             try {
               if (
@@ -247,27 +253,7 @@ export async function POST(
                 );
               }
 
-              enviar({
-                type:
-                  "status",
-
-                operation:
-                  "baixa",
-
-                current:
-                  index,
-
-                total:
-                  rows.length,
-
-                label:
-                  `Baixando ${row.cliente || `parcela ${row.parcelaId}`}`,
-              });
-
               const payload = {
-                /*
-                 * DATA REAL DO PAGAMENTO DO CSV
-                 */
                 data:
                   dataPagamentoParaIso(
                     row.dataPagamento
@@ -293,17 +279,13 @@ export async function POST(
                     row.valor
                   ),
 
-                chequeId:
-                  0,
+                chequeId: 0,
 
-                valorJuros:
-                  0,
+                valorJuros: 0,
 
-                valorMulta:
-                  0,
+                valorMulta: 0,
 
-                valorDesconto:
-                  0,
+                valorDesconto: 0,
 
                 taxaOperadoraCartao:
                   0,
@@ -325,37 +307,31 @@ export async function POST(
                   payload
                 );
 
-              const result = {
-                rowId:
-                  row.rowId,
-
-                status:
-                  "baixada",
-
-                statusMensagem:
-                  "Parcela baixada com sucesso no M8.",
-
-                baixaM8:
-                  retorno,
-              };
-
               enviar({
                 type:
                   "progress",
-
                 operation:
                   "baixa",
-
                 current:
                   atual,
-
                 total:
                   rows.length,
-
                 label:
                   row.cliente,
 
-                result,
+                result: {
+                  rowId:
+                    row.rowId,
+
+                  status:
+                    "baixada",
+
+                  statusMensagem:
+                    "Parcela baixada com sucesso no M8.",
+
+                  baixaM8:
+                    retorno,
+                },
               });
             } catch (error) {
               const mensagem =
@@ -363,65 +339,51 @@ export async function POST(
                   ? error.message
                   : "Erro ao baixar parcela.";
 
-              const result = {
-                rowId:
-                  row.rowId,
-
-                status:
-                  "erro",
-
-                statusMensagem:
-                  "Erro ao baixar parcela.",
-
-                apiError:
-                  mensagem,
-              };
-
               enviar({
                 type:
                   "progress",
-
                 operation:
                   "baixa",
-
                 current:
                   atual,
-
                 total:
                   rows.length,
-
                 label:
                   row.cliente,
 
-                result,
+                result: {
+                  rowId:
+                    row.rowId,
+
+                  status:
+                    "erro",
+
+                  statusMensagem:
+                    "Erro ao baixar parcela.",
+
+                  apiError:
+                    mensagem,
+                },
               });
             }
           }
 
           enviar({
-            type:
-              "done",
-
+            type: "done",
             operation:
               "baixa",
-
             current:
               rows.length,
-
             total:
               rows.length,
-
             label:
               "Baixas concluídas.",
           });
         } catch (error) {
           enviar({
-            type:
-              "error",
-
+            type: "error",
             operation:
               "baixa",
-
             error:
               error instanceof Error
                 ? error.message
@@ -441,7 +403,13 @@ export async function POST(
           "application/x-ndjson; charset=utf-8",
 
         "Cache-Control":
-          "no-cache, no-store, must-revalidate",
+          "no-cache, no-store, must-revalidate, no-transform",
+
+        "X-Accel-Buffering":
+          "no",
+
+        "Content-Encoding":
+          "identity",
 
         Connection:
           "keep-alive",

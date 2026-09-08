@@ -1323,3 +1323,227 @@ th.right .sort-header span:first-child {
   }
 
 }
+/* ============================================================
+   DETALHES DO M8 - LISTA
+============================================================ */
+
+.payload-list {
+  width: 100%;
+
+  margin-top: 6px;
+
+  border: 1px solid #e1e8f0;
+  border-radius: 9px;
+
+  overflow: hidden;
+}
+
+.payload-list-row {
+  display: grid;
+
+  grid-template-columns:
+    minmax(160px, 240px)
+    minmax(0, 1fr);
+
+  min-height: 42px;
+
+  border-bottom:
+    1px solid #edf1f5;
+}
+
+.payload-list-row:last-child {
+  border-bottom: 0;
+}
+
+.payload-list-row:nth-child(even) {
+  background: #fafbfd;
+}
+
+.payload-list-label {
+  display: flex;
+  align-items: center;
+
+  padding: 9px 13px;
+
+  background:
+    rgba(
+      244,
+      247,
+      251,
+      .7
+    );
+
+  color: #65758a;
+
+  border-right:
+    1px solid #e5ebf2;
+
+  font-size: 11px;
+  font-weight: 750;
+
+  letter-spacing: .02em;
+}
+
+.payload-list-value {
+  display: flex;
+  align-items: center;
+
+  min-width: 0;
+
+  padding: 9px 13px;
+
+  color: #25394f;
+
+  font-size: 12px;
+  font-weight: 550;
+
+  line-height: 1.45;
+
+  overflow-wrap: anywhere;
+}
+
+
+/* ============================================================
+   PAYLOAD COMPLETO - EXPANSÍVEL
+============================================================ */
+
+.payload-expand-section {
+  margin-top: 16px;
+
+  border:
+    1px solid #dfe7f0;
+  border-radius: 9px;
+
+  overflow: hidden;
+}
+
+.payload-expand-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  width: 100%;
+
+  gap: 12px;
+
+  padding: 12px 14px;
+
+  background: #f7f9fc;
+  color: #35536f;
+
+  border: 0;
+
+  font-size: 12px;
+  font-weight: 750;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background .15s ease;
+}
+
+.payload-expand-button:hover {
+  background: #f0f5fa;
+}
+
+.payload-expand-icon {
+  color: #708398;
+
+  font-size: 10px;
+
+  transition:
+    transform .2s ease;
+}
+
+.payload-expand-icon.open {
+  transform:
+    rotate(180deg);
+}
+
+.payload-expanded-content {
+  padding: 12px;
+
+  background: white;
+
+  border-top:
+    1px solid #e5ebf2;
+}
+
+.payload-json-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 10px;
+
+  margin-bottom: 9px;
+
+  color: #68798d;
+
+  font-size: 11px;
+}
+
+.payload-copy-button {
+  height: 32px;
+
+  padding:
+    0 11px;
+
+  font-size: 11px;
+}
+
+.payload-json {
+  max-height: 390px;
+
+  margin: 0;
+
+  padding: 15px;
+
+  background: #101b2a;
+  color: #d9e6f4;
+
+  border:
+    1px solid #22334a;
+  border-radius: 8px;
+
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+  font-size: 11px;
+  line-height: 1.55;
+
+  white-space: pre-wrap;
+  overflow: auto;
+
+  tab-size: 2;
+}
+
+
+/* ============================================================
+   RESPONSIVIDADE DO DETALHE
+============================================================ */
+
+@media (max-width: 600px) {
+
+  .payload-list-row {
+    grid-template-columns:
+      1fr;
+  }
+
+  .payload-list-label {
+    padding-bottom: 4px;
+
+    border-right: 0;
+  }
+
+  .payload-list-value {
+    padding-top: 4px;
+    padding-bottom: 10px;
+  }
+
+}

@@ -45,9 +45,7 @@ function money(
   ).format(v);
 }
 
-function dateBr(
-  v: string
-) {
+function dateBr(v: string) {
   if (!v) {
     return "—";
   }
@@ -63,7 +61,7 @@ function dateBr(
 }
 
 /* ============================================================
-   SORT
+   CLASSIFICAÇÃO
 ============================================================ */
 
 type SortKey =
@@ -98,17 +96,16 @@ interface ColumnFilters {
   status: string;
 }
 
-const EMPTY_FILTERS: ColumnFilters =
-  {
-    cliente: "",
-    documento: "",
-    vencimento: "",
-    pagamento: "",
-    valor: "",
-    titulo: "",
-    parcela: "",
-    status: "",
-  };
+const EMPTY_FILTERS: ColumnFilters = {
+  cliente: "",
+  documento: "",
+  vencimento: "",
+  pagamento: "",
+  valor: "",
+  titulo: "",
+  parcela: "",
+  status: "",
+};
 
 /* ============================================================
    PROGRESSO
@@ -129,17 +126,16 @@ interface ProgressState {
   label: string;
 }
 
-const INITIAL_PROGRESS: ProgressState =
-  {
-    active: false,
-    type: "",
-    current: 0,
-    total: 0,
-    label: "",
-  };
+const INITIAL_PROGRESS: ProgressState = {
+  active: false,
+  type: "",
+  current: 0,
+  total: 0,
+  label: "",
+};
 
 /* ============================================================
-   MODAL M8
+   MODAL DE DETALHES
 ============================================================ */
 
 interface DetailModalState {
@@ -157,15 +153,17 @@ interface DetailModalState {
 ============================================================ */
 
 export default function MainApp() {
+  /* ==========================================================
+     ESTADOS PRINCIPAIS
+  ========================================================== */
+
   const [banks, setBanks] =
     useState<BankConfig[]>(
       defaultBanks as BankConfig[]
     );
 
   const [bankId, setBankId] =
-    useState(
-      "banco-teste"
-    );
+    useState("banco-teste");
 
   const [company, setCompany] =
     useState(1);
@@ -177,19 +175,12 @@ export default function MainApp() {
     useState<
       Array<{
         numeroLinha: number;
-
-        values:
-          Record<
-            string,
-            string
-          >;
+        values: Record<string, string>;
       }>
     >([]);
 
   const [rows, setRows] =
-    useState<
-      NormalizedCsvRow[]
-    >([]);
+    useState<NormalizedCsvRow[]>([]);
 
   const [fileName, setFileName] =
     useState("");
@@ -203,16 +194,23 @@ export default function MainApp() {
   const [
     showConfig,
     setShowConfig,
-  ] =
-    useState(false);
+  ] = useState(false);
+
+  /* ==========================================================
+     PESQUISA
+  ========================================================== */
 
   const [query, setQuery] =
     useState("");
 
+  /* ==========================================================
+     CLASSIFICAÇÃO
+  ========================================================== */
+
   const [sortKey, setSortKey] =
-    useState<
-      SortKey | null
-    >(null);
+    useState<SortKey | null>(
+      null
+    );
 
   const [
     sortDirection,
@@ -222,6 +220,10 @@ export default function MainApp() {
       null
     );
 
+  /* ==========================================================
+     FILTROS
+  ========================================================== */
+
   const [
     columnFilters,
     setColumnFilters,
@@ -229,6 +231,10 @@ export default function MainApp() {
     useState<ColumnFilters>(
       EMPTY_FILTERS
     );
+
+  /* ==========================================================
+     PROGRESSO
+  ========================================================== */
 
   const [
     progress,
@@ -238,6 +244,10 @@ export default function MainApp() {
       INITIAL_PROGRESS
     );
 
+  /* ==========================================================
+     MODAL M8
+  ========================================================== */
+
   const [
     detailModal,
     setDetailModal,
@@ -246,8 +256,14 @@ export default function MainApp() {
       null
     );
 
+  const [
+    showFullPayload,
+    setShowFullPayload,
+  ] =
+    useState(false);
+
   /* ==========================================================
-     BANCOS
+     CARREGAR BANCOS SALVOS
   ========================================================== */
 
   useEffect(() => {
@@ -259,19 +275,25 @@ export default function MainApp() {
     if (saved) {
       try {
         setBanks(
-          JSON.parse(
-            saved
-          )
+          JSON.parse(saved)
         );
       } catch {}
     }
   }, []);
+
+  /* ==========================================================
+     BANCO ATUAL
+  ========================================================== */
 
   const bank =
     banks.find(
       (b) =>
         b.id === bankId
     ) || banks[0];
+
+  /* ==========================================================
+     TROCA DE BANCO
+  ========================================================== */
 
   useEffect(() => {
     if (
@@ -333,8 +355,7 @@ export default function MainApp() {
             .reduce(
               (a, r) =>
                 a +
-                (r.valor ||
-                  0),
+                (r.valor || 0),
               0
             ),
       }),
@@ -343,7 +364,7 @@ export default function MainApp() {
     );
 
   /* ==========================================================
-     PROGRESSO %
+     PERCENTUAL DO PROGRESSO
   ========================================================== */
 
   const progressPercent =
@@ -356,13 +377,11 @@ export default function MainApp() {
       : 0;
 
   /* ==========================================================
-     FILTROS
+     ALTERAR FILTRO
   ========================================================== */
 
   function setColumnFilter(
-    key:
-      keyof ColumnFilters,
-
+    key: keyof ColumnFilters,
     value: string
   ) {
     setColumnFilters(
@@ -373,6 +392,10 @@ export default function MainApp() {
     );
   }
 
+  /* ==========================================================
+     LIMPAR FILTROS
+  ========================================================== */
+
   function clearFilters() {
     setQuery("");
 
@@ -380,6 +403,10 @@ export default function MainApp() {
       ...EMPTY_FILTERS,
     });
   }
+
+  /* ==========================================================
+     EXISTEM FILTROS?
+  ========================================================== */
 
   const hasActiveFilters =
     useMemo(
@@ -400,6 +427,10 @@ export default function MainApp() {
       ]
     );
 
+  /* ==========================================================
+     FILTRAGEM
+  ========================================================== */
+
   const filteredRows =
     useMemo(() => {
       const globalQuery =
@@ -409,6 +440,10 @@ export default function MainApp() {
 
       return rows.filter(
         (r) => {
+          /* -----------------------------------------------
+             PESQUISA GERAL
+          ------------------------------------------------ */
+
           if (
             globalQuery
           ) {
@@ -417,9 +452,11 @@ export default function MainApp() {
                 r.numeroLinha,
                 r.cliente,
                 r.documento,
+                r.dataVencimento,
                 dateBr(
                   r.dataVencimento
                 ),
+                r.dataPagamento,
                 dateBr(
                   r.dataPagamento
                 ),
@@ -447,33 +484,45 @@ export default function MainApp() {
             }
           }
 
+          /* -----------------------------------------------
+             CLIENTE
+          ------------------------------------------------ */
+
           if (
             columnFilters.cliente &&
             !String(
-              r.cliente ||
-                ""
+              r.cliente || ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.cliente.toLowerCase()
+                columnFilters.cliente
+                  .toLowerCase()
               )
           ) {
             return false;
           }
 
+          /* -----------------------------------------------
+             DOCUMENTO
+          ------------------------------------------------ */
+
           if (
             columnFilters.documento &&
             !String(
-              r.documento ||
-                ""
+              r.documento || ""
             )
               .toLowerCase()
               .includes(
-                columnFilters.documento.toLowerCase()
+                columnFilters.documento
+                  .toLowerCase()
               )
           ) {
             return false;
           }
+
+          /* -----------------------------------------------
+             VENCIMENTO
+          ------------------------------------------------ */
 
           if (
             columnFilters.vencimento
@@ -485,12 +534,17 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.vencimento.toLowerCase()
+                columnFilters.vencimento
+                  .toLowerCase()
               )
             ) {
               return false;
             }
           }
+
+          /* -----------------------------------------------
+             PAGAMENTO
+          ------------------------------------------------ */
 
           if (
             columnFilters.pagamento
@@ -502,12 +556,17 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.pagamento.toLowerCase()
+                columnFilters.pagamento
+                  .toLowerCase()
               )
             ) {
               return false;
             }
           }
+
+          /* -----------------------------------------------
+             VALOR
+          ------------------------------------------------ */
 
           if (
             columnFilters.valor
@@ -519,18 +578,22 @@ export default function MainApp() {
 
             if (
               !value.includes(
-                columnFilters.valor.toLowerCase()
+                columnFilters.valor
+                  .toLowerCase()
               )
             ) {
               return false;
             }
           }
 
+          /* -----------------------------------------------
+             TÍTULO
+          ------------------------------------------------ */
+
           if (
             columnFilters.titulo &&
             !String(
-              r.tituloId ??
-                ""
+              r.tituloId ?? ""
             ).includes(
               columnFilters.titulo
             )
@@ -538,17 +601,24 @@ export default function MainApp() {
             return false;
           }
 
+          /* -----------------------------------------------
+             PARCELA
+          ------------------------------------------------ */
+
           if (
             columnFilters.parcela &&
             !String(
-              r.parcelaId ??
-                ""
+              r.parcelaId ?? ""
             ).includes(
               columnFilters.parcela
             )
           ) {
             return false;
           }
+
+          /* -----------------------------------------------
+             STATUS
+          ------------------------------------------------ */
 
           if (
             columnFilters.status &&
@@ -574,6 +644,10 @@ export default function MainApp() {
   function handleSort(
     key: SortKey
   ) {
+    /*
+     * Nova coluna:
+     * começa crescente.
+     */
     if (
       sortKey !== key
     ) {
@@ -586,6 +660,9 @@ export default function MainApp() {
       return;
     }
 
+    /*
+     * Crescente -> decrescente.
+     */
     if (
       sortDirection ===
       "asc"
@@ -597,10 +674,26 @@ export default function MainApp() {
       return;
     }
 
-    setSortKey(null);
+    /*
+     * Decrescente -> sem classificação.
+     */
+    if (
+      sortDirection ===
+      "desc"
+    ) {
+      setSortKey(null);
+
+      setSortDirection(
+        null
+      );
+
+      return;
+    }
+
+    setSortKey(key);
 
     setSortDirection(
-      null
+      "asc"
     );
   }
 
@@ -620,6 +713,10 @@ export default function MainApp() {
       : "↓";
   }
 
+  /* ==========================================================
+     LINHAS EXIBIDAS
+  ========================================================== */
+
   const displayedRows =
     useMemo(() => {
       if (
@@ -629,6 +726,12 @@ export default function MainApp() {
         return filteredRows;
       }
 
+      /*
+       * IMPORTANTE:
+       *
+       * Criamos uma cópia para
+       * NÃO alterar rows.
+       */
       return [
         ...filteredRows,
       ].sort(
@@ -640,6 +743,10 @@ export default function MainApp() {
           let valueB:
             any =
             b[sortKey];
+
+          /* -----------------------------------------------
+             CAMPOS NUMÉRICOS
+          ------------------------------------------------ */
 
           if (
             [
@@ -662,6 +769,10 @@ export default function MainApp() {
               );
           }
 
+          /* -----------------------------------------------
+             COMPARAÇÃO NUMÉRICA
+          ------------------------------------------------ */
+
           if (
             typeof valueA ===
               "number" &&
@@ -678,14 +789,16 @@ export default function MainApp() {
               : -result;
           }
 
+          /* -----------------------------------------------
+             TEXTO / DATAS
+          ------------------------------------------------ */
+
           const result =
             String(
-              valueA ??
-                ""
+              valueA ?? ""
             ).localeCompare(
               String(
-                valueB ??
-                  ""
+                valueB ?? ""
               ),
               "pt-BR",
               {
@@ -710,15 +823,14 @@ export default function MainApp() {
     ]);
 
   /* ==========================================================
-     CSV
+     IMPORTAÇÃO CSV
   ========================================================== */
 
   async function chooseFile(
     e: ChangeEvent<HTMLInputElement>
   ) {
     const file =
-      e.target
-        .files?.[0];
+      e.target.files?.[0];
 
     if (!file) {
       return;
@@ -727,9 +839,7 @@ export default function MainApp() {
     if (
       !file.name
         .toLowerCase()
-        .endsWith(
-          ".csv"
-        )
+        .endsWith(".csv")
     ) {
       setMessage(
         "Selecione um arquivo .CSV."
@@ -764,12 +874,20 @@ export default function MainApp() {
         )
       );
 
+      /*
+       * Nova importação começa
+       * sem filtros/classificação.
+       */
       clearFilters();
 
       setSortKey(null);
 
       setSortDirection(
         null
+      );
+
+      setProgress(
+        INITIAL_PROGRESS
       );
 
       setMessage(
@@ -790,7 +908,7 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     CONFIGURAÇÃO BANCO
+     SALVAR CONFIGURAÇÃO DO BANCO
   ========================================================== */
 
   function saveBank(
@@ -833,6 +951,10 @@ export default function MainApp() {
       "Configuração do banco salva neste navegador."
     );
   }
+
+  /* ==========================================================
+     NOVO BANCO
+  ========================================================== */
 
   function newBank() {
     const id =
@@ -894,11 +1016,12 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     LEITOR DE STREAM NDJSON
+     PROCESSAMENTO DO STREAM NDJSON
   ========================================================== */
 
   async function processStream(
     response: Response,
+
     operation:
       | "conciliacao"
       | "baixa"
@@ -919,6 +1042,166 @@ export default function MainApp() {
 
     let buffer = "";
 
+    /* ========================================================
+       PROCESSAR UM EVENTO
+    ======================================================== */
+
+    function processEvent(
+      event: any
+    ) {
+      /* ------------------------------------------------------
+         INÍCIO / STATUS
+      ------------------------------------------------------ */
+
+      if (
+        event.type ===
+          "start" ||
+        event.type ===
+          "status"
+      ) {
+        setProgress({
+          active: true,
+
+          type:
+            operation,
+
+          current:
+            Number(
+              event.current ??
+                0
+            ),
+
+          total:
+            Number(
+              event.total ??
+                0
+            ),
+
+          label:
+            event.label ||
+            "",
+        });
+
+        return;
+      }
+
+      /* ------------------------------------------------------
+         REGISTRO CONCLUÍDO
+      ------------------------------------------------------ */
+
+      if (
+        event.type ===
+        "progress"
+      ) {
+        setProgress({
+          active: true,
+
+          type:
+            operation,
+
+          current:
+            Number(
+              event.current ??
+                0
+            ),
+
+          total:
+            Number(
+              event.total ??
+                0
+            ),
+
+          label:
+            event.label ||
+            "",
+        });
+
+        /*
+         * Atualiza somente a linha
+         * que acabou de ser processada.
+         */
+        if (
+          event.result
+        ) {
+          setRows(
+            (old) =>
+              old.map(
+                (r) =>
+                  r.rowId ===
+                  event.result
+                    .rowId
+                    ? {
+                        ...r,
+                        ...event.result,
+                      }
+                    : r
+              )
+          );
+        }
+
+        return;
+      }
+
+      /* ------------------------------------------------------
+         ERRO GERAL
+      ------------------------------------------------------ */
+
+      if (
+        event.type ===
+        "error"
+      ) {
+        throw new Error(
+          event.error ||
+            "Erro durante o processamento."
+        );
+      }
+
+      /* ------------------------------------------------------
+         CONCLUÍDO
+      ------------------------------------------------------ */
+
+      if (
+        event.type ===
+        "done"
+      ) {
+        /*
+         * Mantemos momentaneamente
+         * o progresso em 100%.
+         *
+         * O finally de conciliar/baixar
+         * irá ocultar depois.
+         */
+        setProgress({
+          active: true,
+
+          type:
+            operation,
+
+          current:
+            Number(
+              event.total ??
+                0
+            ),
+
+          total:
+            Number(
+              event.total ??
+                0
+            ),
+
+          label:
+            event.label ||
+            "Concluído.",
+        });
+
+        return;
+      }
+    }
+
+    /* ========================================================
+       LEITURA DO STREAM
+    ======================================================== */
+
     while (true) {
       const {
         value,
@@ -934,11 +1217,19 @@ export default function MainApp() {
         decoder.decode(
           value,
           {
-            stream:
-              true,
+            stream: true,
           }
         );
 
+      /*
+       * O servidor envia:
+       *
+       * JSON\n
+       * padding\n
+       *
+       * As linhas de padding são
+       * ignoradas pelo trim().
+       */
       const linhas =
         buffer.split(
           "\n"
@@ -952,117 +1243,57 @@ export default function MainApp() {
         const linha
         of linhas
       ) {
-        if (
-          !linha.trim()
-        ) {
+        const texto =
+          linha.trim();
+
+        if (!texto) {
           continue;
         }
 
-        const event =
-          JSON.parse(
-            linha
-          );
-
-        if (
-          event.type ===
-            "start" ||
-          event.type ===
-            "status"
-        ) {
-          setProgress({
-            active: true,
-            type:
-              operation,
-
-            current:
-              event.current ??
-              0,
-
-            total:
-              event.total ??
-              0,
-
-            label:
-              event.label ||
-              "",
-          });
-        }
-
-        if (
-          event.type ===
-          "progress"
-        ) {
-          setProgress({
-            active: true,
-            type:
-              operation,
-
-            current:
-              event.current ??
-              0,
-
-            total:
-              event.total ??
-              0,
-
-            label:
-              event.label ||
-              "",
-          });
-
-          if (
-            event.result
-          ) {
-            setRows(
-              (old) =>
-                old.map(
-                  (r) =>
-                    r.rowId ===
-                    event.result
-                      .rowId
-                      ? {
-                          ...r,
-                          ...event.result,
-                        }
-                      : r
-                )
+        try {
+          const event =
+            JSON.parse(
+              texto
             );
+
+          processEvent(
+            event
+          );
+        } catch (error) {
+          /*
+           * Se for um erro disparado
+           * pelo próprio evento da API,
+           * precisa subir para o catch
+           * de conciliar/baixar.
+           */
+          if (
+            error instanceof Error &&
+            texto.startsWith(
+              "{"
+            )
+          ) {
+            throw error;
           }
         }
-
-        if (
-          event.type ===
-          "error"
-        ) {
-          throw new Error(
-            event.error ||
-              "Erro durante o processamento."
-          );
-        }
-
-        if (
-          event.type ===
-          "done"
-        ) {
-          setProgress({
-            active: false,
-            type:
-              operation,
-
-            current:
-              event.total ||
-              0,
-
-            total:
-              event.total ||
-              0,
-
-            label:
-              event.label ||
-              "",
-          });
-        }
       }
+    }
+
+    /* ========================================================
+       PROCESSAR EVENTUAL RESTO
+    ======================================================== */
+
+    const restante =
+      buffer.trim();
+
+    if (restante) {
+      const event =
+        JSON.parse(
+          restante
+        );
+
+      processEvent(
+        event
+      );
     }
   }
 
@@ -1093,6 +1324,10 @@ export default function MainApp() {
       "Iniciando conciliação..."
     );
 
+    /* ========================================================
+       COLOCAR LINHAS COMO CONCILIANDO
+    ======================================================== */
+
     setRows(
       (old) =>
         old.map(
@@ -1104,17 +1339,49 @@ export default function MainApp() {
 
             statusMensagem:
               "Aguardando processamento...",
+
+            /*
+             * Remove resultado de
+             * conciliação anterior.
+             */
+            tituloId:
+              undefined,
+
+            parcelaId:
+              undefined,
+
+            tituloM8:
+              undefined,
+
+            parcelaM8:
+              undefined,
+
+            fornecedorNome:
+              undefined,
+
+            parcelaValor:
+              undefined,
+
+            parcelaSaldo:
+              undefined,
+
+            apiError:
+              undefined,
           })
         )
     );
 
     setProgress({
       active: true,
+
       type:
         "conciliacao",
+
       current: 0,
+
       total:
         rows.length,
+
       label:
         "Preparando conciliação...",
     });
@@ -1132,6 +1399,13 @@ export default function MainApp() {
                 "application/json",
             },
 
+            /*
+             * IMPORTANTE:
+             *
+             * Enviamos rows original.
+             * Filtros/classificação não
+             * alteram a conciliação.
+             */
             body:
               JSON.stringify({
                 company,
@@ -1143,8 +1417,16 @@ export default function MainApp() {
       if (
         !response.ok
       ) {
+        let errorText = "";
+
+        try {
+          errorText =
+            await response.text();
+        } catch {}
+
         throw new Error(
-          `Erro HTTP ${response.status}`
+          errorText ||
+            `Erro HTTP ${response.status}`
         );
       }
 
@@ -1163,6 +1445,12 @@ export default function MainApp() {
           : "Erro na conciliação."
       );
 
+      /*
+       * Somente registros que ainda
+       * estavam processando recebem erro.
+       *
+       * Os já concluídos permanecem.
+       */
       setRows(
         (old) =>
           old.map(
@@ -1184,11 +1472,21 @@ export default function MainApp() {
     } finally {
       setBusy(false);
 
-      setProgress(
-        (old) => ({
-          ...old,
-          active: false,
-        })
+      /*
+       * Dá um pequeno tempo para
+       * o usuário enxergar 100%.
+       */
+      setTimeout(
+        () => {
+          setProgress(
+            (old) => ({
+              ...old,
+              active:
+                false,
+            })
+          );
+        },
+        700
       );
     }
   }
@@ -1213,12 +1511,48 @@ export default function MainApp() {
       );
     }
 
+    /* ========================================================
+       VALIDAR CONFIGURAÇÃO ANTES DE ENVIAR
+    ======================================================== */
+
+    if (
+      Number(
+        bank.m8
+          .contaContabilId
+      ) <= 0
+    ) {
+      return setMessage(
+        "Configure a Conta Contábil do banco antes de efetuar a baixa."
+      );
+    }
+
+    if (
+      Number(
+        bank.m8
+          .historicoId
+      ) <= 0
+    ) {
+      return setMessage(
+        "Configure o Histórico do banco antes de efetuar a baixa."
+      );
+    }
+
+    if (
+      Number(
+        bank.m8
+          .meioPagamentoId
+      ) <= 0
+    ) {
+      return setMessage(
+        "Configure o Meio de Pagamento do banco antes de efetuar a baixa."
+      );
+    }
+
     const total =
       aptas.reduce(
         (a, r) =>
           a +
-          (r.valor ||
-            0),
+          (r.valor || 0),
         0
       );
 
@@ -1236,12 +1570,25 @@ export default function MainApp() {
       "Iniciando baixa das parcelas..."
     );
 
+    /* ========================================================
+       MARCAR COMO BAIXANDO
+    ======================================================== */
+
+    const idsAptas =
+      new Set(
+        aptas.map(
+          (r) =>
+            r.rowId
+        )
+      );
+
     setRows(
       (old) =>
         old.map(
           (r) =>
-            r.status ===
-            "pronto"
+            idsAptas.has(
+              r.rowId
+            )
               ? {
                   ...r,
 
@@ -1250,25 +1597,25 @@ export default function MainApp() {
 
                   statusMensagem:
                     "Aguardando baixa...",
+
+                  apiError:
+                    undefined,
                 }
               : r
         )
     );
 
-    /*
-     * Depois da alteração acima,
-     * aptas continua contendo os objetos
-     * anteriores com status pronto,
-     * que é exatamente o que enviaremos.
-     */
-
     setProgress({
       active: true,
+
       type:
         "baixa",
+
       current: 0,
+
       total:
         aptas.length,
+
       label:
         "Preparando baixas...",
     });
@@ -1302,8 +1649,16 @@ export default function MainApp() {
       if (
         !response.ok
       ) {
+        let errorText = "";
+
+        try {
+          errorText =
+            await response.text();
+        } catch {}
+
         throw new Error(
-          `Erro HTTP ${response.status}`
+          errorText ||
+            `Erro HTTP ${response.status}`
         );
       }
 
@@ -1343,17 +1698,23 @@ export default function MainApp() {
     } finally {
       setBusy(false);
 
-      setProgress(
-        (old) => ({
-          ...old,
-          active: false,
-        })
+      setTimeout(
+        () => {
+          setProgress(
+            (old) => ({
+              ...old,
+              active:
+                false,
+            })
+          );
+        },
+        700
       );
     }
   }
 
   /* ==========================================================
-     MODAL PAYLOAD
+     ABRIR DETALHES DO TÍTULO
   ========================================================== */
 
   function abrirTitulo(
@@ -1362,20 +1723,36 @@ export default function MainApp() {
     if (
       !row.tituloM8
     ) {
+      setMessage(
+        "O payload deste título não está disponível."
+      );
+
       return;
     }
+
+    /*
+     * Sempre inicia com
+     * JSON completo fechado.
+     */
+    setShowFullPayload(
+      false
+    );
 
     setDetailModal({
       title:
         `Título M8 ${row.tituloId}`,
 
       subtitle:
-        "Payload completo retornado pelo endpoint de Contas a Pagar.",
+        "Informações retornadas pelo M8 para este título.",
 
       data:
         row.tituloM8,
     });
   }
+
+  /* ==========================================================
+     ABRIR DETALHES DA PARCELA
+  ========================================================== */
 
   function abrirParcela(
     row: NormalizedCsvRow
@@ -1383,20 +1760,46 @@ export default function MainApp() {
     if (
       !row.parcelaM8
     ) {
+      setMessage(
+        "O payload desta parcela não está disponível."
+      );
+
       return;
     }
+
+    setShowFullPayload(
+      false
+    );
 
     setDetailModal({
       title:
         `Parcela M8 ${row.parcelaId}`,
 
       subtitle:
-        `Payload completo da parcela vinculada ao título ${row.tituloId}.`,
+        `Informações da parcela vinculada ao título ${row.tituloId}.`,
 
       data:
         row.parcelaM8,
     });
   }
+
+  /* ==========================================================
+     FECHAR MODAL
+  ========================================================== */
+
+  function fecharDetalhes() {
+    setDetailModal(
+      null
+    );
+
+    setShowFullPayload(
+      false
+    );
+  }
+
+  /* ==========================================================
+     COPIAR PAYLOAD
+  ========================================================== */
 
   async function copiarPayload() {
     if (
@@ -1425,7 +1828,7 @@ export default function MainApp() {
   }
 
   /* ==========================================================
-     SORT HEADER
+     CABEÇALHO CLASSIFICÁVEL
   ========================================================== */
 
   function SortHeader({
@@ -1460,12 +1863,16 @@ export default function MainApp() {
               column
             )
           }
+          title={`Classificar por ${label}`}
         >
           <span>
             {label}
           </span>
 
-          <span className="sort-icon">
+          <span
+            className="sort-icon"
+            aria-hidden="true"
+          >
             {sortIcon(
               column
             )}
@@ -1481,6 +1888,11 @@ export default function MainApp() {
 
   return (
     <main className="container">
+
+      {/* ======================================================
+          CABEÇALHO
+      ====================================================== */}
+
       <header className="page-header">
         <div>
           <div className="eyebrow">
@@ -1504,7 +1916,12 @@ export default function MainApp() {
         </div>
       </header>
 
+      {/* ======================================================
+          CONTROLES
+      ====================================================== */}
+
       <section className="panel controls">
+
         <label>
           Empresa M8
 
@@ -1512,6 +1929,7 @@ export default function MainApp() {
             type="number"
             min="1"
             value={company}
+            disabled={busy}
             onChange={(e) =>
               setCompany(
                 Number(
@@ -1527,6 +1945,7 @@ export default function MainApp() {
 
           <select
             value={bankId}
+            disabled={busy}
             onChange={(e) =>
               setBankId(
                 e.target.value
@@ -1547,8 +1966,10 @@ export default function MainApp() {
         </label>
 
         <div className="button-stack">
+
           <button
             className="button secondary"
+            disabled={busy}
             onClick={() =>
               setShowConfig(
                 true
@@ -1560,12 +1981,14 @@ export default function MainApp() {
 
           <button
             className="link-button"
+            disabled={busy}
             onClick={
               newBank
             }
           >
             + Adicionar banco
           </button>
+
         </div>
 
         <label className="file-control">
@@ -1574,6 +1997,7 @@ export default function MainApp() {
           <input
             type="file"
             accept=".csv,text/csv"
+            disabled={busy}
             onChange={
               chooseFile
             }
@@ -1584,7 +2008,12 @@ export default function MainApp() {
               "Selecionar arquivo CSV"}
           </span>
         </label>
+
       </section>
+
+      {/* ======================================================
+          MENSAGEM
+      ====================================================== */}
 
       {message && (
         <div className="notice">
@@ -1592,13 +2021,15 @@ export default function MainApp() {
         </div>
       )}
 
-      {/* ====================================================
-          PROGRESSO
-      ==================================================== */}
+      {/* ======================================================
+          BARRA DE PROGRESSO
+      ====================================================== */}
 
       {progress.active && (
         <section className="progress-panel">
+
           <div className="progress-info">
+
             <div>
               <strong>
                 {progress.type ===
@@ -1615,9 +2046,11 @@ export default function MainApp() {
             <strong className="progress-percent">
               {progressPercent}%
             </strong>
+
           </div>
 
           <div className="progress-track">
+
             <div
               className="progress-bar"
               style={{
@@ -1625,16 +2058,23 @@ export default function MainApp() {
                   `${progressPercent}%`,
               }}
             />
+
           </div>
 
           <div className="progress-counter">
             {progress.current} de{" "}
             {progress.total} processado(s)
           </div>
+
         </section>
       )}
 
+      {/* ======================================================
+          CARDS
+      ====================================================== */}
+
       <section className="stats">
+
         <div className="stat">
           <span>
             Registros
@@ -1686,21 +2126,29 @@ export default function MainApp() {
             )}
           </strong>
         </div>
+
       </section>
 
+      {/* ======================================================
+          TABELA
+      ====================================================== */}
+
       <section className="panel">
+
         <div className="toolbar">
+
           <div>
             <h2>
               Registros importados
             </h2>
 
             <p>
-              Clique no número do Título ou da Parcela para visualizar o payload completo retornado pelo M8.
+              Clique no número do Título ou da Parcela para visualizar os detalhes retornados pelo M8.
             </p>
           </div>
 
           <div className="toolbar-actions">
+
             <input
               className="search"
               placeholder="Pesquisar em toda a tabela..."
@@ -1714,6 +2162,7 @@ export default function MainApp() {
 
             {hasActiveFilters && (
               <button
+                type="button"
                 className="button secondary"
                 onClick={
                   clearFilters
@@ -1749,27 +2198,58 @@ export default function MainApp() {
             >
               2. Efetuar baixas ({counts.pronto})
             </button>
+
           </div>
+
         </div>
+
+        {/* ====================================================
+            RESUMO
+        ==================================================== */}
 
         {rows.length > 0 && (
           <div className="table-summary">
+
             Exibindo{" "}
+
             <strong>
               {displayedRows.length}
-            </strong>{" "}
-            de{" "}
+            </strong>
+
+            {" "}de{" "}
+
             <strong>
               {rows.length}
-            </strong>{" "}
-            registro(s)
+            </strong>
+
+            {" "}registro(s)
+
+            {sortKey &&
+              sortDirection && (
+                <>
+                  {" "}· Classificação ativa
+                </>
+              )}
+
           </div>
         )}
 
+        {/* ====================================================
+            TABELA
+        ==================================================== */}
+
         <div className="table-wrap">
+
           <table>
+
             <thead>
+
+              {/* ===============================================
+                  CABEÇALHO
+              =============================================== */}
+
               <tr>
+
                 <SortHeader
                   column="numeroLinha"
                   label="Linha"
@@ -1820,10 +2300,20 @@ export default function MainApp() {
                   column="statusMensagem"
                   label="Retorno"
                 />
+
               </tr>
 
+              {/* ===============================================
+                  FILTROS
+              =============================================== */}
+
               <tr className="filter-row">
-                <th>—</th>
+
+                <th>
+                  <span className="filter-placeholder">
+                    —
+                  </span>
+                </th>
 
                 <th>
                   <input
@@ -1950,6 +2440,7 @@ export default function MainApp() {
                       )
                     }
                   >
+
                     <option value="">
                       Todos
                     </option>
@@ -1985,35 +2476,56 @@ export default function MainApp() {
                     <option value="erro">
                       Erro
                     </option>
+
                   </select>
                 </th>
 
-                <th>—</th>
+                <th>
+                  <span className="filter-placeholder">
+                    —
+                  </span>
+                </th>
+
               </tr>
+
             </thead>
 
+            {/* =================================================
+                CORPO
+            ================================================= */}
+
             <tbody>
+
               {displayedRows.length ===
               0 ? (
+
                 <tr>
+
                   <td
                     colSpan={10}
                     className="empty"
                   >
+
                     {rows.length ===
                     0
                       ? "Importe um arquivo CSV para visualizar os registros."
                       : "Nenhum registro encontrado com os filtros informados."}
+
                   </td>
+
                 </tr>
+
               ) : (
+
                 displayedRows.map(
                   (r) => (
+
                     <tr
                       key={
                         r.rowId
                       }
                     >
+
                       <td>
                         {r.numeroLinha}
                       </td>
@@ -2046,11 +2558,15 @@ export default function MainApp() {
                         )}
                       </td>
 
-                      {/* TÍTULO M8 */}
+                      {/* =======================================
+                          TÍTULO M8
+                      ======================================= */}
 
                       <td>
+
                         {r.tituloId &&
                         r.tituloM8 ? (
+
                           <button
                             type="button"
                             className="m8-link"
@@ -2063,17 +2579,25 @@ export default function MainApp() {
                           >
                             {r.tituloId}
                           </button>
+
                         ) : (
+
                           r.tituloId ??
                           "—"
+
                         )}
+
                       </td>
 
-                      {/* PARCELA M8 */}
+                      {/* =======================================
+                          PARCELA M8
+                      ======================================= */}
 
                       <td>
+
                         {r.parcelaId &&
                         r.parcelaM8 ? (
+
                           <button
                             type="button"
                             className="m8-link"
@@ -2086,19 +2610,33 @@ export default function MainApp() {
                           >
                             {r.parcelaId}
                           </button>
+
                         ) : (
+
                           r.parcelaId ??
                           "—"
+
                         )}
+
                       </td>
 
+                      {/* =======================================
+                          STATUS
+                      ======================================= */}
+
                       <td>
+
                         <StatusBadge
                           status={
                             r.status
                           }
                         />
+
                       </td>
+
+                      {/* =======================================
+                          RETORNO
+                      ======================================= */}
 
                       <td
                         className="message-cell"
@@ -2106,6 +2644,7 @@ export default function MainApp() {
                           r.apiError
                         }
                       >
+
                         {r.statusMensagem}
 
                         {r.apiError && (
@@ -2113,19 +2652,35 @@ export default function MainApp() {
                             {r.apiError}
                           </div>
                         )}
+
                       </td>
+
                     </tr>
+
                   )
                 )
+
               )}
+
             </tbody>
+
           </table>
+
         </div>
+
       </section>
 
+      {/* ======================================================
+          FLUXO
+      ====================================================== */}
+
       <section className="flow">
+
         <div>
-          <b>ETAPA 1</b>
+          <b>
+            ETAPA 1
+          </b>
+
           <span>
             Autenticação Token
           </span>
@@ -2134,7 +2689,10 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>ETAPA 2</b>
+          <b>
+            ETAPA 2
+          </b>
+
           <span>
             Contas a Pagar
           </span>
@@ -2143,7 +2701,10 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>ETAPA 3</b>
+          <b>
+            ETAPA 3
+          </b>
+
           <span>
             Parcelas em Aberto
           </span>
@@ -2152,7 +2713,10 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>REVISÃO</b>
+          <b>
+            REVISÃO
+          </b>
+
           <span>
             Conciliação
           </span>
@@ -2161,18 +2725,28 @@ export default function MainApp() {
         <i>→</i>
 
         <div>
-          <b>ETAPA 4</b>
+          <b>
+            ETAPA 4
+          </b>
+
           <span>
             Baixar Parcelas
           </span>
         </div>
+
       </section>
+
+      {/* ======================================================
+          CONFIGURAÇÃO DO BANCO
+      ====================================================== */}
 
       <BankConfigModal
         open={
           showConfig
         }
-        bank={bank}
+        bank={
+          bank
+        }
         headers={
           headers
         }
@@ -2186,27 +2760,34 @@ export default function MainApp() {
         }
       />
 
-      {/* ====================================================
-          MODAL DETALHES M8
-      ==================================================== */}
+      {/* ======================================================
+          MODAL DE DETALHES M8
+      ====================================================== */}
 
       {detailModal && (
+
         <div
           className="modal-backdrop"
-          onMouseDown={() =>
-            setDetailModal(
-              null
-            )
+          onMouseDown={
+            fecharDetalhes
           }
         >
+
           <div
             className="modal m8-detail-modal"
             onMouseDown={(e) =>
               e.stopPropagation()
             }
           >
+
+            {/* =================================================
+                CABEÇALHO
+            ================================================= */}
+
             <div className="modal-title">
+
               <div>
+
                 <div className="eyebrow">
                   DETALHES ERP M8
                 </div>
@@ -2218,24 +2799,28 @@ export default function MainApp() {
                 <p>
                   {detailModal.subtitle}
                 </p>
+
               </div>
 
               <button
+                type="button"
                 className="icon-button"
-                onClick={() =>
-                  setDetailModal(
-                    null
-                  )
+                onClick={
+                  fecharDetalhes
                 }
                 title="Fechar"
               >
                 ×
               </button>
+
             </div>
 
-            {/* CAMPOS */}
+            {/* =================================================
+                INFORMAÇÕES EM LISTA
+            ================================================= */}
 
-            <div className="payload-grid">
+            <div className="payload-list">
+
               {Object.entries(
                 detailModal.data ||
                   {}
@@ -2244,74 +2829,149 @@ export default function MainApp() {
                   key,
                   value,
                 ]) => (
-                  <div
-                    className="payload-field"
-                    key={key}
-                  >
-                    <span>
-                      {key}
-                    </span>
 
-                    <strong>
+                  <div
+                    className="payload-list-row"
+                    key={
+                      key
+                    }
+                  >
+
+                    <div className="payload-list-label">
+                      {key}
+                    </div>
+
+                    <div className="payload-list-value">
+
                       {value ===
                         null ||
                       value ===
-                        undefined
+                        undefined ||
+                      value ===
+                        ""
+
                         ? "—"
+
                         : typeof value ===
                             "object"
+
                           ? JSON.stringify(
                               value
                             )
+
                           : String(
                               value
                             )}
-                    </strong>
+
+                    </div>
+
                   </div>
+
                 )
               )}
+
             </div>
 
-            {/* JSON COMPLETO */}
+            {/* =================================================
+                PAYLOAD COMPLETO
+            ================================================= */}
 
-            <div className="payload-json-header">
-              <h3>
-                Payload completo
-              </h3>
+            <div className="payload-expand-section">
 
               <button
-                className="button secondary"
-                onClick={
-                  copiarPayload
+                type="button"
+                className="payload-expand-button"
+                onClick={() =>
+                  setShowFullPayload(
+                    (old) =>
+                      !old
+                  )
                 }
               >
-                Copiar JSON
+
+                <span>
+                  {showFullPayload
+                    ? "Ocultar payload completo"
+                    : "Visualizar payload completo"}
+                </span>
+
+                <span
+                  className={`payload-expand-icon ${
+                    showFullPayload
+                      ? "open"
+                      : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  ▼
+                </span>
+
               </button>
+
+              {/* ===============================================
+                  JSON EXPANDIDO
+              =============================================== */}
+
+              {showFullPayload && (
+
+                <div className="payload-expanded-content">
+
+                  <div className="payload-json-actions">
+
+                    <span>
+                      JSON completo retornado pelo M8
+                    </span>
+
+                    <button
+                      type="button"
+                      className="button secondary payload-copy-button"
+                      onClick={
+                        copiarPayload
+                      }
+                    >
+                      Copiar JSON
+                    </button>
+
+                  </div>
+
+                  <pre className="payload-json">
+                    {JSON.stringify(
+                      detailModal.data,
+                      null,
+                      2
+                    )}
+                  </pre>
+
+                </div>
+
+              )}
+
             </div>
 
-            <pre className="payload-json">
-              {JSON.stringify(
-                detailModal.data,
-                null,
-                2
-              )}
-            </pre>
+            {/* =================================================
+                AÇÕES
+            ================================================= */}
 
             <div className="modal-actions">
+
               <button
+                type="button"
                 className="button secondary"
-                onClick={() =>
-                  setDetailModal(
-                    null
-                  )
+                onClick={
+                  fecharDetalhes
                 }
               >
                 Fechar
               </button>
+
             </div>
+
           </div>
+
         </div>
+
       )}
+
     </main>
   );
 }
