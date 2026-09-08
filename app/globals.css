@@ -216,11 +216,41 @@ select {
    BOTÕES
 ============================================================ */
 
+/*
+ * IMPORTANTE:
+ *
+ * No JSX a ordem é:
+ *
+ * 1. Configurar banco
+ * 2. + Adicionar banco
+ *
+ * O column-reverse inverte APENAS visualmente:
+ *
+ * + Adicionar banco
+ * [ Configurar banco ]
+ *
+ * Assim o botão Configurar Banco fica alinhado
+ * com os inputs dos blocos ao lado.
+ */
+
 .button-stack {
   display: flex;
-  flex-direction: column;
 
-  gap: 4px;
+  flex-direction: column-reverse;
+
+  justify-content: flex-start;
+
+  gap: 6px;
+}
+
+.button-stack .button {
+  width: 100%;
+}
+
+.button-stack .link-button {
+  height: 17px;
+
+  line-height: 17px;
 }
 
 .button {
@@ -268,17 +298,30 @@ select {
 }
 
 .link-button {
-  padding: 0 3px;
+  border: 0;
 
   background: none;
   color: #2864a7;
 
-  border: 0;
+  cursor: pointer;
 
   font-size: 12px;
   text-align: left;
 
-  cursor: pointer;
+  padding: 0 3px;
+
+  transition:
+    color 0.15s ease;
+}
+
+.link-button:hover:not(:disabled) {
+  color: #0b4178;
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 
@@ -398,9 +441,7 @@ select {
 ============================================================ */
 
 .table-summary {
-  padding:
-    10px
-    18px;
+  padding: 10px 18px;
 
   background: #fbfcfe;
   color: #738195;
@@ -627,6 +668,7 @@ select.column-filter {
   display: inline-flex;
 
   width: 100%;
+
   justify-content: center;
 
   color: #aab4c0;
@@ -801,8 +843,7 @@ th.right .sort-header span:first-child {
 }
 
 .modal {
-  width:
-    min(850px, 96vw);
+  width: min(850px, 96vw);
 
   max-height: 92vh;
 
@@ -919,120 +960,6 @@ th.right .sort-header span:first-child {
 
 
 /* ============================================================
-   RESPONSIVIDADE
-============================================================ */
-
-@media (max-width: 1100px) {
-
-  .toolbar-actions {
-    flex-wrap: wrap;
-  }
-
-  .search {
-    min-width: 200px;
-  }
-
-}
-
-
-@media (max-width: 950px) {
-
-  .container {
-    padding: 18px;
-  }
-
-  .controls {
-    grid-template-columns:
-      1fr
-      1fr;
-  }
-
-  .stats {
-    grid-template-columns:
-      1fr
-      1fr;
-  }
-
-  .stat.accent {
-    grid-column:
-      span 2;
-  }
-
-  .toolbar {
-    align-items:
-      flex-start;
-
-    flex-direction:
-      column;
-  }
-
-  .toolbar-actions {
-    width: 100%;
-
-    flex-wrap: wrap;
-  }
-
-  .flow {
-    justify-content:
-      flex-start;
-
-    overflow: auto;
-  }
-
-  .page-header {
-    flex-direction:
-      column;
-
-    gap: 10px;
-  }
-
-  .form-grid,
-  .form-grid.three {
-    grid-template-columns:
-      1fr;
-  }
-
-}
-
-
-@media (max-width: 600px) {
-
-  .controls {
-    grid-template-columns:
-      1fr;
-  }
-
-  .stats {
-    grid-template-columns:
-      1fr;
-  }
-
-  .stat.accent {
-    grid-column: auto;
-  }
-
-  .toolbar-actions {
-    flex-direction:
-      column;
-
-    align-items:
-      stretch;
-  }
-
-  .search {
-    width: 100%;
-  }
-
-  .button {
-    width: 100%;
-  }
-
-  .table-summary {
-    font-size: 11px;
-  }
-
-}
-/* ============================================================
    LINKS M8 - TÍTULO / PARCELA
 ============================================================ */
 
@@ -1057,8 +984,8 @@ th.right .sort-header span:first-child {
   cursor: pointer;
 
   transition:
-    color .15s ease,
-    opacity .15s ease;
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .m8-link:hover {
@@ -1089,7 +1016,7 @@ th.right .sort-header span:first-child {
 
   box-shadow:
     0 3px 12px
-    rgba(31, 62, 99, .04);
+    rgba(31, 62, 99, 0.04);
 }
 
 .progress-info {
@@ -1156,7 +1083,7 @@ th.right .sort-header span:first-child {
   border-radius: 999px;
 
   transition:
-    width .25s ease;
+    width 0.25s ease;
 }
 
 .progress-counter {
@@ -1178,52 +1105,71 @@ th.right .sort-header span:first-child {
 
 
 /* ============================================================
-   CAMPOS DO PAYLOAD
+   DETALHES DO M8 - LISTA
 ============================================================ */
 
-.payload-grid {
+.payload-list {
+  width: 100%;
+
+  margin-top: 6px;
+
+  border: 1px solid #e1e8f0;
+  border-radius: 9px;
+
+  overflow: hidden;
+}
+
+.payload-list-row {
   display: grid;
 
   grid-template-columns:
-    repeat(3, minmax(0, 1fr));
+    minmax(160px, 240px)
+    minmax(0, 1fr);
 
-  gap: 10px;
+  min-height: 42px;
 
-  margin-top: 4px;
+  border-bottom: 1px solid #edf1f5;
 }
 
-.payload-field {
-  min-width: 0;
-
-  padding: 11px 12px;
-
-  background: #f8fafc;
-
-  border: 1px solid #e3e9f0;
-  border-radius: 8px;
+.payload-list-row:last-child {
+  border-bottom: 0;
 }
 
-.payload-field span {
-  display: block;
+.payload-list-row:nth-child(even) {
+  background: #fafbfd;
+}
 
-  margin-bottom: 5px;
+.payload-list-label {
+  display: flex;
+  align-items: center;
 
-  color: #728196;
+  padding: 9px 13px;
 
-  font-size: 10px;
+  background:
+    rgba(244, 247, 251, 0.7);
+
+  color: #65758a;
+
+  border-right: 1px solid #e5ebf2;
+
+  font-size: 11px;
   font-weight: 750;
 
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.payload-field strong {
-  display: block;
+.payload-list-value {
+  display: flex;
+  align-items: center;
 
-  color: #263b53;
+  min-width: 0;
+
+  padding: 9px 13px;
+
+  color: #25394f;
 
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 550;
 
   line-height: 1.45;
 
@@ -1232,34 +1178,104 @@ th.right .sort-header span:first-child {
 
 
 /* ============================================================
-   JSON COMPLETO
+   PAYLOAD COMPLETO - EXPANSÍVEL
 ============================================================ */
 
-.payload-json-header {
+.payload-expand-section {
+  margin-top: 16px;
+
+  border: 1px solid #dfe7f0;
+  border-radius: 9px;
+
+  overflow: hidden;
+}
+
+.payload-expand-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
 
+  width: 100%;
+
   gap: 12px;
 
-  margin-top: 22px;
+  padding: 12px 14px;
+
+  background: #f7f9fc;
+  color: #35536f;
+
+  border: 0;
+
+  font-size: 12px;
+  font-weight: 750;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease;
 }
 
-.payload-json-header h3 {
-  margin: 0 !important;
+.payload-expand-button:hover {
+  background: #f0f5fa;
+}
+
+.payload-expand-icon {
+  color: #708398;
+
+  font-size: 10px;
+
+  transition:
+    transform 0.2s ease;
+}
+
+.payload-expand-icon.open {
+  transform: rotate(180deg);
+}
+
+.payload-expanded-content {
+  padding: 12px;
+
+  background: white;
+
+  border-top: 1px solid #e5ebf2;
+}
+
+.payload-json-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 10px;
+
+  margin-bottom: 9px;
+
+  color: #68798d;
+
+  font-size: 11px;
+}
+
+.payload-copy-button {
+  height: 32px;
+
+  padding: 0 11px;
+
+  font-size: 11px;
 }
 
 .payload-json {
   max-height: 390px;
 
-  margin: 10px 0 0;
+  margin: 0;
+
   padding: 15px;
 
   background: #101b2a;
   color: #d9e6f4;
 
   border: 1px solid #22334a;
-  border-radius: 9px;
+  border-radius: 8px;
 
   font-family:
     "SFMono-Regular",
@@ -1291,248 +1307,105 @@ th.right .sort-header span:first-child {
 
 
 /* ============================================================
-   RESPONSIVIDADE DETALHES
+   RESPONSIVIDADE
 ============================================================ */
 
-@media (max-width: 900px) {
-
-  .payload-grid {
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
+@media (max-width: 1100px) {
+  .toolbar-actions {
+    flex-wrap: wrap;
   }
 
+  .search {
+    min-width: 200px;
+  }
+}
+
+
+@media (max-width: 950px) {
+  .container {
+    padding: 18px;
+  }
+
+  .controls {
+    grid-template-columns:
+      1fr
+      1fr;
+  }
+
+  .stats {
+    grid-template-columns:
+      1fr
+      1fr;
+  }
+
+  .stat.accent {
+    grid-column: span 2;
+  }
+
+  .toolbar {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+
+    flex-wrap: wrap;
+  }
+
+  .flow {
+    justify-content: flex-start;
+
+    overflow: auto;
+  }
+
+  .page-header {
+    flex-direction: column;
+
+    gap: 10px;
+  }
+
+  .form-grid,
+  .form-grid.three {
+    grid-template-columns: 1fr;
+  }
 }
 
 
 @media (max-width: 600px) {
-
-  .payload-grid {
+  .controls {
     grid-template-columns: 1fr;
   }
 
-  .progress-info {
-    align-items: flex-start;
+  .stats {
+    grid-template-columns: 1fr;
   }
 
-  .progress-percent {
-    font-size: 17px !important;
+  .stat.accent {
+    grid-column: auto;
   }
 
-  .m8-detail-modal {
+  .toolbar-actions {
+    flex-direction: column;
+
+    align-items: stretch;
+  }
+
+  .search {
     width: 100%;
   }
 
-}
-/* ============================================================
-   DETALHES DO M8 - LISTA
-============================================================ */
-
-.payload-list {
-  width: 100%;
-
-  margin-top: 6px;
-
-  border: 1px solid #e1e8f0;
-  border-radius: 9px;
-
-  overflow: hidden;
-}
-
-.payload-list-row {
-  display: grid;
-
-  grid-template-columns:
-    minmax(160px, 240px)
-    minmax(0, 1fr);
-
-  min-height: 42px;
-
-  border-bottom:
-    1px solid #edf1f5;
-}
-
-.payload-list-row:last-child {
-  border-bottom: 0;
-}
-
-.payload-list-row:nth-child(even) {
-  background: #fafbfd;
-}
-
-.payload-list-label {
-  display: flex;
-  align-items: center;
-
-  padding: 9px 13px;
-
-  background:
-    rgba(
-      244,
-      247,
-      251,
-      .7
-    );
-
-  color: #65758a;
-
-  border-right:
-    1px solid #e5ebf2;
-
-  font-size: 11px;
-  font-weight: 750;
-
-  letter-spacing: .02em;
-}
-
-.payload-list-value {
-  display: flex;
-  align-items: center;
-
-  min-width: 0;
-
-  padding: 9px 13px;
-
-  color: #25394f;
-
-  font-size: 12px;
-  font-weight: 550;
-
-  line-height: 1.45;
-
-  overflow-wrap: anywhere;
-}
-
-
-/* ============================================================
-   PAYLOAD COMPLETO - EXPANSÍVEL
-============================================================ */
-
-.payload-expand-section {
-  margin-top: 16px;
-
-  border:
-    1px solid #dfe7f0;
-  border-radius: 9px;
-
-  overflow: hidden;
-}
-
-.payload-expand-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  width: 100%;
-
-  gap: 12px;
-
-  padding: 12px 14px;
-
-  background: #f7f9fc;
-  color: #35536f;
-
-  border: 0;
-
-  font-size: 12px;
-  font-weight: 750;
-
-  text-align: left;
-
-  cursor: pointer;
-
-  transition:
-    background .15s ease;
-}
-
-.payload-expand-button:hover {
-  background: #f0f5fa;
-}
-
-.payload-expand-icon {
-  color: #708398;
-
-  font-size: 10px;
-
-  transition:
-    transform .2s ease;
-}
-
-.payload-expand-icon.open {
-  transform:
-    rotate(180deg);
-}
-
-.payload-expanded-content {
-  padding: 12px;
-
-  background: white;
-
-  border-top:
-    1px solid #e5ebf2;
-}
-
-.payload-json-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 10px;
-
-  margin-bottom: 9px;
-
-  color: #68798d;
-
-  font-size: 11px;
-}
-
-.payload-copy-button {
-  height: 32px;
-
-  padding:
-    0 11px;
-
-  font-size: 11px;
-}
-
-.payload-json {
-  max-height: 390px;
-
-  margin: 0;
-
-  padding: 15px;
-
-  background: #101b2a;
-  color: #d9e6f4;
-
-  border:
-    1px solid #22334a;
-  border-radius: 8px;
-
-  font-family:
-    "SFMono-Regular",
-    Consolas,
-    "Liberation Mono",
-    monospace;
-
-  font-size: 11px;
-  line-height: 1.55;
-
-  white-space: pre-wrap;
-  overflow: auto;
-
-  tab-size: 2;
-}
-
-
-/* ============================================================
-   RESPONSIVIDADE DO DETALHE
-============================================================ */
-
-@media (max-width: 600px) {
+  .button {
+    width: 100%;
+  }
+
+  .table-summary {
+    font-size: 11px;
+  }
 
   .payload-list-row {
-    grid-template-columns:
-      1fr;
+    grid-template-columns: 1fr;
   }
 
   .payload-list-label {
@@ -1546,4 +1419,15 @@ th.right .sort-header span:first-child {
     padding-bottom: 10px;
   }
 
+  .progress-info {
+    align-items: flex-start;
+  }
+
+  .progress-percent {
+    font-size: 17px !important;
+  }
+
+  .m8-detail-modal {
+    width: 100%;
+  }
 }
