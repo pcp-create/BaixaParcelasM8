@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { autenticarM8, listarContasPagar, listarParcelas } from "@/lib/m8";
+import {
+  autenticarM8,
+  listarContasPagar,
+  listarParcelas,
+} from "@/lib/m8";
+
 import {
   M8ContaPagar,
   M8Parcela,
@@ -9,12 +14,10 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Normaliza textos para comparação:
- * - remove acentos
- * - converte para maiúsculas
- * - remove espaços duplicados
- */
+/* ============================================================
+   NORMALIZAÇÃO DE TEXTO
+============================================================ */
+
 function normalizarTexto(valor?: string | null): string {
   return String(valor ?? "")
     .normalize("NFD")
@@ -24,61 +27,52 @@ function normalizarTexto(valor?: string | null): string {
     .trim();
 }
 
-/**
- * Exemplo:
- *
- * "21695 - ELGI COMPRESSORES DO BRASIL IMP. EXP.LTD - 10560347000142"
- *
- * Retorna:
- *
- * "ELGI"
- */
-function extrairPrefixoFornecedor(valor?: string | null): string {
-  const texto = String(valor ?? "").trim();
+/* ============================================================
+   EXTRAIR PREFIXO DO NOME
+
+   Exemplos:
+
+   "21695 - ELGI COMPRESSORES DO BRASIL IMP. EXP.LTD - 105..."
+       ↓
+   "ELGI"
+
+   "ELGI COMPRESSORES DO BRASIL IMP. EXP.LTD"
+       ↓
+   "ELGI"
+============================================================ */
+
+function extrairPrefixo(valor?: string | null): string {
+  const texto = normalizarTexto(valor);
 
   if (!texto) {
     return "";
   }
 
-  // Divide pelo separador " - "
-  const partes = texto
-    .split(/\s+-\s+/)
-    .map((parte) => parte.trim())
-    .filter(Boolean);
+  let nome = texto;
 
-  /**
-   * Formato esperado do M8:
+  /*
+   * Se começar com:
    *
-   * CODIGO - NOME DO FORNECEDOR - CNPJ
+   * 21695 - ELGI...
    *
-   * partes[0] = código
-   * partes[1] = nome fornecedor
+   * remove código inicial.
    */
-  const nomeFornecedor =
-    partes.length >= 2
-      ? partes[1]
-      : texto;
+  nome = nome.replace(/^\d+\s*-\s*/, "");
 
-  // Pega somente a primeira palavra
-  const primeiraPalavra =
-    nomeFornecedor
-      .split(/\s+/)
-      .filter(Boolean)[0] ?? "";
-
-  return normalizarTexto(primeiraPalavra);
+  /*
+   * Agora:
+   *
+   * ELGI COMPRESSORES...
+   *
+   * Retorna primeira palavra.
+   */
+  return nome.split(/\s+/)[0] ?? "";
 }
 
-/**
- * Verifica se o prefixo do fornecedor M8
- * existe no campo Cliente do CSV.
- *
- * Exemplo:
- *
- * prefixo = ELGI
- * cliente = ELGI COMPRESSORES
- *
- * => true
- */
+/* ============================================================
+   CLIENTE CONTÉM PREFIXO
+============================================================ */
+
 function clienteContemPrefixo(
   clienteCsv?: string | null,
   prefixo?: string | null
@@ -90,31 +84,78 @@ function clienteContemPrefixo(
     return false;
   }
 
-  return cliente.includes(prefixoNormalizado);
+  /*
+   * Evita falsos positivos como:
+   *
+   * prefixo = ABC
+   * cliente = XABCY
+   *
+   * Procura a palavra.
+   */
+  const palavrasCliente = cliente.split(/[^A-Z0-9]+/).filter(Boolean);
+
+  return palavrasCliente.includes(prefixoNormalizado);
 }
 
-/**
- * Comparação monetária com tolerância de 1 centavo.
- */
+/* ============================================================
+   NORMALIZAR VALOR
+============================================================ */
+
+function normalizarValor(valor: unknown): number | null {
+  if (valor === null || valor === undefined || valor === "") {
+    return null;
+  }
+
+  if (typeof valor === "number") {
+    return Number.isFinite(valor) ? valor : null;
+  }
+
+  let texto = String(valor)
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/R\$/gi, "");
+
+  /*
+   * Brasileiro:
+   *
+   * 10.739,00
+   * 10739,00
+   */
+  if (texto.includes(",")) {
+    texto = texto
+      .replace(/\./g, "")
+      .replace(",", ".");
+  }
+
+  const numero = Number(texto);
+
+  return Number.isFinite(numero)
+    ? numero
+    : null;
+}
+
+/* ============================================================
+   COMPARAR VALORES
+============================================================ */
+
 function mesmoValor(
-  valorA?: number | null,
-  valorB?: number | null
+  valorA: unknown,
+  valorB: unknown
 ): boolean {
-  if (valorA == null || valorB == null) {
+  const a = normalizarValor(valorA);
+  const b = normalizarValor(valorB);
+
+  if (a === null || b === null) {
     return false;
   }
 
-  return Math.abs(Number(valorA) - Number(valorB)) <= 0.01;
+  return Math.abs(a - b) <= 0.01;
 }
 
-/**
- * Normaliza uma data para YYYY-MM-DD.
- *
- * Aceita:
- * 2026-09-19T00:00:00Z
- * 2026-09-19
- * 19/09/2026
- */
+/* ============================================================
+   NORMALIZAR DATA
+============================================================ */
+
 function normalizarData(valor?: string | null): string {
   if (!valor) {
     return "";
@@ -122,64 +163,87 @@ function normalizarData(valor?: string | null): string {
 
   const texto = String(valor).trim();
 
-  // DD/MM/YYYY
-  const br = texto.match(
-    /^(\d{2})\/(\d{2})\/(\d{4})/
+  /*
+   * DD/MM/YYYY
+   */
+  const formatoBR = texto.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})/
   );
 
-  if (br) {
-    return `${br[3]}-${br[2]}-${br[1]}`;
+  if (formatoBR) {
+    const dia =
+      formatoBR[1].padStart(2, "0");
+
+    const mes =
+      formatoBR[2].padStart(2, "0");
+
+    const ano =
+      formatoBR[3];
+
+    return `${ano}-${mes}-${dia}`;
   }
 
-  // YYYY-MM-DD ou ISO
-  const iso = texto.match(
+  /*
+   * ISO:
+   *
+   * 2026-09-04
+   * 2026-09-04T03:00:00
+   */
+  const formatoISO = texto.match(
     /^(\d{4})-(\d{2})-(\d{2})/
   );
 
-  if (iso) {
-    return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (formatoISO) {
+    return `${formatoISO[1]}-${formatoISO[2]}-${formatoISO[3]}`;
   }
 
-  return texto;
+  return "";
 }
 
-/**
- * ETAPA 2
- *
- * Localiza títulos candidatos utilizando:
- *
- * M8 titulo.valor
- *      =
- * CSV row.valor
- *
- * +
- *
- * prefixo titulo.fornecedorNome
- *      encontrado em
- * CSV row.cliente
- */
+/* ============================================================
+   ETAPA 2
+   ENCONTRAR TÍTULOS
+============================================================ */
+
 function encontrarTitulosCandidatos(
   row: NormalizedCsvRow,
   titulos: M8ContaPagar[]
 ): M8ContaPagar[] {
-  return titulos.filter((titulo) => {
-    const valorTitulo = Number(titulo.valor ?? 0);
 
-    if (!mesmoValor(row.valor, valorTitulo)) {
+  return titulos.filter((titulo) => {
+
+    /* -------------------------
+       VALOR
+    ------------------------- */
+
+    if (
+      !mesmoValor(
+        row.valor,
+        titulo.valor
+      )
+    ) {
       return false;
     }
 
-    const nomeFornecedor =
+    /* -------------------------
+       FORNECEDOR
+    ------------------------- */
+
+    const fornecedorNome =
       titulo.fornecedorNome ||
       titulo.pessoaCompraNome ||
       "";
 
     const prefixo =
-      extrairPrefixoFornecedor(nomeFornecedor);
+      extrairPrefixo(fornecedorNome);
 
     if (!prefixo) {
       return false;
     }
+
+    /* -------------------------
+       CLIENTE CSV
+    ------------------------- */
 
     return clienteContemPrefixo(
       row.cliente,
@@ -188,31 +252,23 @@ function encontrarTitulosCandidatos(
   });
 }
 
-/**
- * ETAPA 3
- *
- * Localiza parcelas utilizando:
- *
- * parcela.vencimento
- *      =
- * CSV row.dataPagamento
- *
- * parcela.valor
- *      =
- * CSV row.valor
- *
- * prefixo parcela.pessoaNome
- *      encontrado em
- * CSV row.cliente
- */
+/* ============================================================
+   ETAPA 3
+   ENCONTRAR PARCELA
+============================================================ */
+
 function encontrarParcelasCandidatas(
   row: NormalizedCsvRow,
   parcelas: M8Parcela[]
 ): M8Parcela[] {
+
   return parcelas.filter((parcela) => {
-    // -------------------------------------------------
-    // 1. Vencimento x Pagamento CSV
-    // -------------------------------------------------
+
+    /* -------------------------
+       VENCIMENTO
+       x
+       PAGAMENTO CSV
+    ------------------------- */
 
     const vencimentoM8 =
       normalizarData(parcela.vencimento);
@@ -228,58 +284,60 @@ function encontrarParcelasCandidatas(
       return false;
     }
 
-    // -------------------------------------------------
-    // 2. Valor
-    // -------------------------------------------------
-
-    const valorParcela =
-      Number(parcela.valor ?? 0);
+    /* -------------------------
+       VALOR
+    ------------------------- */
 
     if (
       !mesmoValor(
         row.valor,
-        valorParcela
+        parcela.valor
       )
     ) {
       return false;
     }
 
-    // -------------------------------------------------
-    // 3. Pessoa / Cliente
-    // -------------------------------------------------
+    /* -------------------------
+       PESSOA
+    ------------------------- */
 
-    const nomePessoa =
+    const pessoaNome =
       parcela.pessoaNome ||
       parcela.favorecidoNome ||
       "";
 
-    const prefixo =
-      extrairPrefixoFornecedor(nomePessoa);
+    const prefixoPessoa =
+      extrairPrefixo(pessoaNome);
 
-    if (!prefixo) {
+    if (!prefixoPessoa) {
       return false;
     }
 
     return clienteContemPrefixo(
       row.cliente,
-      prefixo
+      prefixoPessoa
     );
   });
 }
+
+/* ============================================================
+   POST
+============================================================ */
 
 export async function POST(
   request: Request
 ) {
   try {
+
     const { company, rows } =
       (await request.json()) as {
         company: number;
         rows: NormalizedCsvRow[];
       };
 
-    // =================================================
-    // VALIDAÇÕES
-    // =================================================
+    /* ========================================================
+       VALIDAÇÕES
+    ======================================================== */
 
     if (
       !Number.isInteger(company) ||
@@ -290,7 +348,9 @@ export async function POST(
           error:
             "Empresa M8 inválida.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -303,57 +363,118 @@ export async function POST(
           error:
             "Nenhum registro recebido.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    // =================================================
-    // ETAPA 1 — AUTENTICAÇÃO
-    // =================================================
+    /* ========================================================
+       ETAPA 1
+       AUTENTICAÇÃO
+    ======================================================== */
 
     const token =
       await autenticarM8(company);
 
-    // =================================================
-    // ETAPA 2 — LISTAR CONTAS A PAGAR
-    // =================================================
+    /* ========================================================
+       ETAPA 2
+       LISTAR TÍTULOS
+    ======================================================== */
 
     const titulos =
       await listarContasPagar(token);
 
+    console.log(
+      `[CONCILIACAO] ${titulos.length} títulos recebidos do M8`
+    );
+
+    /*
+     * Diagnóstico específico.
+     *
+     * Confirma se o título informado por você
+     * realmente chegou da API.
+     */
+    const titulo43424 =
+      titulos.find(
+        (titulo) =>
+          Number(titulo.id) === 43424
+      );
+
+    console.log(
+      "[DIAGNOSTICO] Título 43424 recebido:",
+      titulo43424 ?? "NÃO RECEBIDO"
+    );
+
     const results = [];
 
-    // =================================================
-    // PROCESSAR CADA LINHA DO CSV
-    // =================================================
+    /* ========================================================
+       PROCESSAR CSV
+    ======================================================== */
 
     for (const row of rows) {
+
       try {
-        // ---------------------------------------------
-        // Validar dados mínimos do CSV
-        // ---------------------------------------------
+
+        /* ====================================================
+           DIAGNÓSTICO DO CSV
+        ==================================================== */
+
+        console.log(
+          "[CSV]",
+          {
+            rowId:
+              row.rowId,
+
+            cliente:
+              row.cliente,
+
+            valorOriginal:
+              row.valor,
+
+            valorNormalizado:
+              normalizarValor(
+                row.valor
+              ),
+
+            pagamento:
+              row.dataPagamento,
+
+            pagamentoNormalizado:
+              normalizarData(
+                row.dataPagamento
+              ),
+          }
+        );
+
+        /* ====================================================
+           VALIDAR CSV
+        ==================================================== */
 
         if (
           row.valor == null ||
           !row.cliente ||
           !row.dataPagamento
         ) {
-          results.push({
-            rowId: row.rowId,
 
-            status: "erro",
+          results.push({
+            rowId:
+              row.rowId,
+
+            status:
+              "erro",
 
             statusMensagem:
-              "Cliente, pagamento ou valor ausente no CSV.",
+              "Cliente, Pagamento ou Valor ausente no CSV.",
           });
 
           continue;
         }
 
-        // =============================================
-        // ETAPA 2
-        // ENCONTRAR TÍTULOS
-        // =============================================
+        /* ====================================================
+           ETAPA 2
+           LOCALIZAR TÍTULOS
+        ==================================================== */
 
         const candidatos =
           encontrarTitulosCandidatos(
@@ -361,26 +482,95 @@ export async function POST(
             titulos
           );
 
+        console.log(
+          `[ETAPA 2] Linha ${row.rowId}: ${candidatos.length} título(s) candidato(s).`,
+          candidatos.map(
+            (titulo) => ({
+              id:
+                titulo.id,
+
+              fornecedor:
+                titulo.fornecedorNome,
+
+              prefixo:
+                extrairPrefixo(
+                  titulo.fornecedorNome
+                ),
+
+              valor:
+                titulo.valor,
+            })
+          )
+        );
+
         if (
           candidatos.length === 0
         ) {
+
+          /*
+           * Diagnóstico adicional:
+           *
+           * procura somente pelo valor para sabermos
+           * se o problema foi Cliente ou Valor.
+           */
+          const mesmoValorEncontrados =
+            titulos.filter(
+              (titulo) =>
+                mesmoValor(
+                  row.valor,
+                  titulo.valor
+                )
+            );
+
           results.push({
-            rowId: row.rowId,
+            rowId:
+              row.rowId,
 
             status:
               "nao_encontrado",
 
             statusMensagem:
-              "Nenhum título encontrado com o mesmo valor e fornecedor/cliente.",
+              `Nenhum título encontrado por Valor + Cliente. Foram encontrados ${mesmoValorEncontrados.length} título(s) somente pelo valor.`,
+
+            diagnostico: {
+              clienteCsv:
+                row.cliente,
+
+              valorCsv:
+                normalizarValor(
+                  row.valor
+                ),
+
+              titulosMesmoValor:
+                mesmoValorEncontrados
+                  .slice(0, 20)
+                  .map(
+                    (titulo) => ({
+                      tituloId:
+                        titulo.id,
+
+                      valor:
+                        titulo.valor,
+
+                      fornecedorNome:
+                        titulo.fornecedorNome,
+
+                      prefixo:
+                        extrairPrefixo(
+                          titulo.fornecedorNome
+                        ),
+                    })
+                  ),
+            },
           });
 
           continue;
         }
 
-        // =============================================
-        // ETAPA 3
-        // CONSULTAR PARCELAS DOS TÍTULOS CANDIDATOS
-        // =============================================
+        /* ====================================================
+           ETAPA 3
+           CONSULTAR PARCELAS
+        ==================================================== */
 
         const encontrados: Array<{
           titulo: M8ContaPagar;
@@ -390,21 +580,73 @@ export async function POST(
         for (
           const titulo of candidatos
         ) {
+
           const parcelas =
             await listarParcelas(
               token,
               titulo.id
             );
 
-          const parcelasEncontradas =
+          console.log(
+            `[ETAPA 3] Título ${titulo.id}: ${parcelas.length} parcela(s) recebida(s).`
+          );
+
+          for (
+            const parcela of parcelas
+          ) {
+
+            console.log(
+              "[PARCELA]",
+              {
+                tituloId:
+                  titulo.id,
+
+                parcelaId:
+                  parcela.id,
+
+                vencimento:
+                  parcela.vencimento,
+
+                vencimentoNormalizado:
+                  normalizarData(
+                    parcela.vencimento
+                  ),
+
+                pagamentoCsv:
+                  normalizarData(
+                    row.dataPagamento
+                  ),
+
+                valorParcela:
+                  parcela.valor,
+
+                valorCsv:
+                  normalizarValor(
+                    row.valor
+                  ),
+
+                pessoaNome:
+                  parcela.pessoaNome,
+
+                prefixoPessoa:
+                  extrairPrefixo(
+                    parcela.pessoaNome
+                  ),
+
+                clienteCsv:
+                  row.cliente,
+              }
+            );
+          }
+
+          const matches =
             encontrarParcelasCandidatas(
               row,
               parcelas
             );
 
           for (
-            const parcela
-            of parcelasEncontradas
+            const parcela of matches
           ) {
             encontrados.push({
               titulo,
@@ -413,32 +655,25 @@ export async function POST(
           }
         }
 
-        // =============================================
-        // RESULTADO ÚNICO
-        // =============================================
+        /* ====================================================
+           UMA PARCELA
+        ==================================================== */
 
         if (
           encontrados.length === 1
         ) {
+
           const {
             titulo,
             parcela,
           } = encontrados[0];
 
-          const fornecedorNome =
-            titulo.fornecedorNome ||
-            titulo.pessoaCompraNome ||
-            "";
-
-          const prefixoFornecedor =
-            extrairPrefixoFornecedor(
-              fornecedorNome
-            );
-
           results.push({
-            rowId: row.rowId,
+            rowId:
+              row.rowId,
 
-            status: "pronto",
+            status:
+              "pronto",
 
             statusMensagem:
               "Parcela encontrada e pronta para baixa.",
@@ -449,48 +684,53 @@ export async function POST(
             parcelaId:
               parcela.id,
 
-            fornecedorNome,
+            fornecedorNome:
+              titulo.fornecedorNome ||
+              "",
 
-            prefixoFornecedor,
+            prefixoFornecedor:
+              extrairPrefixo(
+                titulo.fornecedorNome
+              ),
 
             pessoaNome:
               parcela.pessoaNome ||
               "",
 
             parcelaVencimento:
-              parcela.vencimento ||
-              "",
+              parcela.vencimento,
 
             parcelaValor:
-              Number(
-                parcela.valor ?? 0
+              normalizarValor(
+                parcela.valor
               ),
 
             parcelaSaldo:
-              Number(
-                parcela.saldo ??
-                parcela.valor ??
-                0
+              normalizarValor(
+                parcela.saldo
               ),
           });
 
           continue;
         }
 
-        // =============================================
-        // CONFLITO
-        // =============================================
+        /* ====================================================
+           CONFLITO
+        ==================================================== */
 
         if (
           encontrados.length > 1
         ) {
-          results.push({
-            rowId: row.rowId,
 
-            status: "conflito",
+          results.push({
+            rowId:
+              row.rowId,
+
+            status:
+              "conflito",
 
             statusMensagem:
-              `Conflito: ${encontrados.length} parcelas coincidem com Cliente, Valor e Pagamento do CSV.`,
+              `Conflito: ${encontrados.length} parcelas coincidem com Cliente + Valor + Pagamento.`,
 
             candidatos:
               encontrados.map(
@@ -505,13 +745,10 @@ export async function POST(
                     parcela.id,
 
                   fornecedorNome:
-                    titulo.fornecedorNome ||
-                    titulo.pessoaCompraNome ||
-                    "",
+                    titulo.fornecedorNome,
 
                   pessoaNome:
-                    parcela.pessoaNome ||
-                    "",
+                    parcela.pessoaNome,
 
                   vencimento:
                     parcela.vencimento,
@@ -525,25 +762,43 @@ export async function POST(
           continue;
         }
 
-        // =============================================
-        // TÍTULO ENCONTRADO,
-        // MAS PARCELA NÃO
-        // =============================================
+        /* ====================================================
+           NENHUMA PARCELA
+        ==================================================== */
 
         results.push({
-          rowId: row.rowId,
+          rowId:
+            row.rowId,
 
           status:
             "nao_encontrado",
 
           statusMensagem:
-            `Foram encontrados ${candidatos.length} título(s) pelo Valor + Cliente, mas nenhuma parcela coincidiu com Pagamento + Valor + Cliente.`,
-        });
-      } catch (error) {
-        results.push({
-          rowId: row.rowId,
+            `${candidatos.length} título(s) encontrado(s), porém nenhuma parcela coincidiu com Pagamento + Valor + Cliente.`,
 
-          status: "erro",
+          titulosEncontrados:
+            candidatos.map(
+              (titulo) => ({
+                tituloId:
+                  titulo.id,
+
+                fornecedorNome:
+                  titulo.fornecedorNome,
+
+                valor:
+                  titulo.valor,
+              })
+            ),
+        });
+
+      } catch (error) {
+
+        results.push({
+          rowId:
+            row.rowId,
+
+          status:
+            "erro",
 
           statusMensagem:
             error instanceof Error
@@ -552,6 +807,10 @@ export async function POST(
         });
       }
     }
+
+    /* ========================================================
+       RETORNO
+    ======================================================== */
 
     return NextResponse.json({
       success: true,
@@ -562,9 +821,24 @@ export async function POST(
         etapa3: true,
       },
 
+      diagnostico: {
+        quantidadeTitulosM8:
+          titulos.length,
+
+        titulo43424Recebido:
+          Boolean(titulo43424),
+      },
+
       results,
     });
+
   } catch (error) {
+
+    console.error(
+      "[CONCILIACAO ERRO]",
+      error
+    );
+
     return NextResponse.json(
       {
         error:
@@ -572,7 +846,9 @@ export async function POST(
             ? error.message
             : "Erro interno na conciliação.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
