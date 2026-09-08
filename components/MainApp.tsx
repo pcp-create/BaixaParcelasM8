@@ -1635,142 +1635,304 @@ export default function MainApp() {
       </header>
 
       {/* ======================================================
-          CONTROLES
+    CONTROLES / CONFIGURAÇÃO INICIAL
+====================================================== */}
 
-          NOVA ORDEM:
+<section
+  className="panel controls"
+  style={{
+    display: "grid",
 
-          1. Arquivo CSV
-          2. Configurar banco
-          3. Banco
-          4. Empresa M8
-      ====================================================== */}
+    /*
+     * Arquivo recebe mais espaço.
+     * Configuração e Banco ficam intermediários.
+     * Empresa M8 fica compacta.
+     */
+    gridTemplateColumns:
+      "minmax(280px, 1.45fr) minmax(220px, 1fr) minmax(210px, 0.95fr) minmax(120px, 0.55fr)",
 
-      <section className="panel controls">
+    gap: "16px",
 
-        {/* ====================================================
-            1. ARQUIVO CSV
-        ==================================================== */}
+    alignItems: "start",
 
-        <label className="file-control">
-          1. Arquivo CSV
+    padding: "18px",
+  }}
+>
 
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            disabled={busy}
-            onChange={chooseFile}
-          />
+  {/* ====================================================
+      1. ARQUIVO CSV
+  ==================================================== */}
 
-          <span>
-            {fileName ||
-              "Selecionar arquivo CSV"}
-          </span>
-        </label>
+  <label
+    className="file-control"
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "7px",
+      minWidth: 0,
+    }}
+  >
+    <span
+      style={{
+        height: "auto",
+        padding: 0,
+        background: "transparent",
+        border: 0,
+        borderRadius: 0,
+        color: "#294969",
+        fontSize: "12px",
+        fontWeight: 750,
+        cursor: "default",
+        overflow: "visible",
+      }}
+    >
+      1. Arquivo CSV
+    </span>
 
-        {/* ====================================================
-            2. CONFIGURAR BANCO
-        ==================================================== */}
+    <input
+      type="file"
+      accept=".csv,text/csv"
+      disabled={busy}
+      onChange={chooseFile}
+    />
 
-        <div className="button-stack">
+    <span
+      title={fileName || "Selecionar arquivo CSV"}
+      style={{
+        display: "flex",
+        alignItems: "center",
 
-          <button
-            className="button secondary"
-            disabled={
-              busy ||
-              !rawRows.length
-            }
-            onClick={() =>
-              setShowConfig(true)
-            }
-            title={
-              !rawRows.length
-                ? "Importe primeiro o arquivo CSV para configurar as colunas."
-                : "Configurar o mapeamento das colunas do banco."
-            }
+        width: "100%",
+        height: "40px",
+
+        padding: "0 12px",
+
+        background: "#f8fbff",
+
+        border: "1px dashed #7f9bbc",
+        borderRadius: "8px",
+
+        color: "#294969",
+
+        fontSize: "12px",
+        fontWeight: 650,
+
+        cursor: busy
+          ? "not-allowed"
+          : "pointer",
+
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {fileName || "Selecionar arquivo CSV"}
+    </span>
+  </label>
+
+  {/* ====================================================
+      2. CONFIGURAÇÃO DO BANCO
+  ==================================================== */}
+
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "7px",
+      minWidth: 0,
+    }}
+  >
+    <div
+      style={{
+        color: "#294969",
+        fontSize: "12px",
+        fontWeight: 750,
+        lineHeight: 1.4,
+      }}
+    >
+      2. Configuração do banco
+    </div>
+
+    <button
+      type="button"
+      className="button secondary"
+      disabled={
+        busy ||
+        !rawRows.length
+      }
+      onClick={() =>
+        setShowConfig(true)
+      }
+      title={
+        !rawRows.length
+          ? "Importe primeiro o arquivo CSV para configurar as colunas."
+          : "Configurar o mapeamento das colunas do banco."
+      }
+      style={{
+        width: "100%",
+        height: "40px",
+      }}
+    >
+      Configurar banco
+    </button>
+
+    <span
+      style={{
+        paddingLeft: "2px",
+
+        color: !rawRows.length
+          ? "#9aa6b5"
+          : "#718094",
+
+        fontSize: "11px",
+        fontWeight: 400,
+
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {!rawRows.length
+        ? "Importe o arquivo CSV primeiro"
+        : "Mapear colunas do arquivo"}
+    </span>
+  </div>
+
+  {/* ====================================================
+      3. BANCO
+  ==================================================== */}
+
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "7px",
+      minWidth: 0,
+    }}
+  >
+    <div
+      style={{
+        color: "#294969",
+        fontSize: "12px",
+        fontWeight: 750,
+        lineHeight: 1.4,
+      }}
+    >
+      3. Banco
+    </div>
+
+    <select
+      value={bankId}
+      disabled={busy}
+      onChange={(e) =>
+        setBankId(
+          e.target.value
+        )
+      }
+      style={{
+        width: "100%",
+        height: "40px",
+
+        padding: "0 11px",
+
+        background: "white",
+        color: "#17263d",
+
+        border: "1px solid #cfd9e6",
+        borderRadius: "8px",
+
+        outline: "none",
+      }}
+    >
+      {banks.map(
+        (b) => (
+          <option
+            key={b.id}
+            value={b.id}
           >
-            2. Configurar banco
-          </button>
+            {b.nome}
+          </option>
+        )
+      )}
+    </select>
 
-          <span
-            style={{
-              fontSize: "11px",
-              color: "#718094",
-              minHeight: "17px",
-              paddingLeft: "3px",
-            }}
-          >
-            {!rawRows.length
-              ? "Importe o CSV primeiro"
-              : "Mapear colunas do arquivo"}
-          </span>
+    <button
+      type="button"
+      className="link-button"
+      disabled={
+        busy ||
+        !rawRows.length
+      }
+      onClick={newBank}
+      style={{
+        paddingLeft: "2px",
+        height: "17px",
+        lineHeight: "17px",
+      }}
+    >
+      + Adicionar banco
+    </button>
+  </div>
 
-        </div>
+  {/* ====================================================
+      4. EMPRESA M8
+  ==================================================== */}
 
-        {/* ====================================================
-            3. BANCO
-        ==================================================== */}
+  <label
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "7px",
+      minWidth: 0,
+    }}
+  >
+    <span
+      style={{
+        color: "#294969",
+        fontSize: "12px",
+        fontWeight: 750,
+        lineHeight: 1.4,
+      }}
+    >
+      4. Empresa M8
+    </span>
 
-        <label>
-          3. Banco
+    <input
+      type="number"
+      min="1"
+      value={company}
+      disabled={busy}
+      onChange={(e) =>
+        setCompany(
+          Number(
+            e.target.value
+          ) || 1
+        )
+      }
+      style={{
+        width: "100%",
+        height: "40px",
+      }}
+    />
 
-          <select
-            value={bankId}
-            disabled={busy}
-            onChange={(e) =>
-              setBankId(
-                e.target.value
-              )
-            }
-          >
-            {banks.map(
-              (b) => (
-                <option
-                  key={b.id}
-                  value={b.id}
-                >
-                  {b.nome}
-                </option>
-              )
-            )}
-          </select>
+    {/*
+     * Espaço invisível para manter
+     * a mesma altura dos blocos que
+     * possuem uma segunda informação.
+     */}
+    <span
+      aria-hidden="true"
+      style={{
+        height: "17px",
+        fontSize: "11px",
+        visibility: "hidden",
+      }}
+    >
+      espaço
+    </span>
+  </label>
 
-          <button
-            type="button"
-            className="link-button"
-            disabled={
-              busy ||
-              !rawRows.length
-            }
-            onClick={newBank}
-          >
-            + Adicionar banco
-          </button>
-
-        </label>
-
-        {/* ====================================================
-            4. EMPRESA
-        ==================================================== */}
-
-        <label>
-          4. Empresa M8
-
-          <input
-            type="number"
-            min="1"
-            value={company}
-            disabled={busy}
-            onChange={(e) =>
-              setCompany(
-                Number(
-                  e.target.value
-                ) || 1
-              )
-            }
-          />
-        </label>
-
-      </section>
+</section>
 
       {/* ======================================================
           AVISO
