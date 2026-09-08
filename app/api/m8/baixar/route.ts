@@ -9,70 +9,208 @@ import {
 } from "@/lib/types";
 
 /* ============================================================
-   DATA DO PAGAMENTO
+   CONFIGURAÇÕES
 ============================================================ */
 
-function dataPagamentoParaIso(
-  valor: string
-): string {
-  if (!valor) {
-    throw new Error(
-      "Data de pagamento não informada."
-    );
-  }
-
-  const iso =
-    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
-      valor
-    );
-
-  if (iso) {
-    return `${iso[1]}-${iso[2]}-${iso[3]}T12:00:00.000Z`;
-  }
-
-  const br =
-    /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(
-      valor
-    );
-
-  if (br) {
-    return `${br[3]}-${br[2]}-${br[1]}T12:00:00.000Z`;
-  }
-
-  const data =
-    new Date(valor);
-
-  if (
-    Number.isNaN(
-      data.getTime()
-    )
-  ) {
-    throw new Error(
-      `Data de pagamento inválida: ${valor}`
-    );
-  }
-
-  return data.toISOString();
-}
+/*
+ * Padding utilizado para ajudar o navegador a receber
+ * atualizações progressivas do processamento.
+ */
+const STREAM_PADDING = " ".repeat(2048);
 
 /* ============================================================
-   STREAM
-
-   Padding utilizado para reduzir buffering
-   de pequenos chunks.
+   CRIAR EVENTO DO STREAM
 ============================================================ */
 
-const STREAM_PADDING =
-  " ".repeat(2048);
-
-function criarEvento(
-  dados: any
-) {
+function criarEvento(dados: any): string {
   return (
     JSON.stringify(dados) +
     "\n" +
     STREAM_PADDING +
     "\n"
+  );
+}
+
+/* ============================================================
+   NORMALIZAR VALOR
+============================================================ */
+
+function normalizarValor(
+  valor: unknown
+): number {
+  if (
+    typeof valor === "number"
+  ) {
+    return valor;
+  }
+
+  const texto =
+    String(valor ?? "")
+      .trim()
+      .replace(
+        /R\$\s*/gi,
+        ""
+      )
+      .replace(/\s/g, "");
+
+  if (!texto) {
+    return 0;
+  }
+
+  /*
+   * Formato brasileiro:
+   *
+   * 10.739,00
+   */
+  if (
+    texto.includes(",")
+  ) {
+    return (
+      Number(
+        texto
+          .replace(/\./g, "")
+          .replace(",", ".")
+      ) || 0
+    );
+  }
+
+  return Number(texto) || 0;
+}
+
+/* ============================================================
+   DATA DE PAGAMENTO DO CSV → ISO
+
+   IMPORTANTE:
+
+   A DATA UTILIZADA NA BAIXA É A DATA DE PAGAMENTO
+   INFORMADA NO CSV DO EXTRATO BANCÁRIO.
+
+   Exemplos aceitos:
+
+   04/09/2026
+   2026-09-04
+
+   Resultado:
+
+   2026-09-04T12:00:00.000Z
+
+   Utilizamos 12:00 UTC para evitar alteração do dia
+   devido a conversões de fuso horário.
+============================================================ */
+
+function dataPagamentoParaIso(
+  valor: unknown
+): string {
+  const texto =
+    String(valor ?? "").trim();
+
+  if (!texto) {
+    throw new Error(
+      "Data de pagamento não informada no CSV."
+    );
+  }
+
+  /* ----------------------------------------------------------
+     FORMATO BRASILEIRO
+     DD/MM/AAAA
+  ---------------------------------------------------------- */
+
+  const br =
+    /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(
+      texto
+    );
+
+  if (br) {
+    const dia = br[1];
+    const mes = br[2];
+    const ano = br[3];
+
+    return `${ano}-${mes}-${dia}T12:00:00.000Z`;
+  }
+
+  /* ----------------------------------------------------------
+     FORMATO ISO
+     AAAA-MM-DD
+  ---------------------------------------------------------- */
+
+  const iso =
+    /^(\d{4})-(\d{2})-(\d{2})/.exec(
+      texto
+    );
+
+  if (iso) {
+    const ano = iso[1];
+    const mes = iso[2];
+    const dia = iso[3];
+
+    return `${ano}-${mes}-${dia}T12:00:00.000Z`;
+  }
+
+  throw new Error(
+    `Data de pagamento inválida: ${texto}`
+  );
+}
+
+/* ============================================================
+   ACRESCENTAR TEXTO PRESERVANDO O EXISTENTE
+
+   REGRA:
+
+   Se já existir informação no M8:
+
+   Migração da Empresa 3
+
+   E na configuração do banco estiver:
+
+   Baixa via conciliação bancária
+
+   Resultado enviado:
+
+   Migração da Empresa 3
+
+   Baixa via conciliação bancária
+
+   Ou seja:
+   preserva o texto existente,
+   adiciona uma linha em branco,
+   depois acrescenta o texto configurado.
+============================================================ */
+
+function acrescentarTexto(
+  existente: unknown,
+  adicional: unknown
+): string {
+  const textoExistente =
+    String(
+      existente ?? ""
+    ).trim();
+
+  const textoAdicional =
+    String(
+      adicional ?? ""
+    ).trim();
+
+  /*
+   * Existem os dois textos.
+   */
+  if (
+    textoExistente &&
+    textoAdicional
+  ) {
+    return (
+      textoExistente +
+      "\n\n" +
+      textoAdicional
+    );
+  }
+
+  /*
+   * Existe somente um deles.
+   */
+  return (
+    textoExistente ||
+    textoAdicional ||
+    ""
   );
 }
 
@@ -88,7 +226,13 @@ export async function POST(
 
   const stream =
     new ReadableStream({
-      async start(controller) {
+      async start(
+        controller
+      ) {
+        /* ====================================================
+           ENVIAR EVENTO
+        ==================================================== */
+
         function enviar(
           dados: any
         ) {
@@ -102,6 +246,10 @@ export async function POST(
         }
 
         try {
+          /* ==================================================
+             RECEBER PAYLOAD
+          ================================================== */
+
           const body =
             await request.json();
 
@@ -115,6 +263,10 @@ export async function POST(
 
           const config =
             body?.config as BankM8Config;
+
+          /* ==================================================
+             VALIDAÇÕES GERAIS
+          ================================================== */
 
           if (
             !Number.isFinite(
@@ -134,62 +286,101 @@ export async function POST(
             !rows.length
           ) {
             throw new Error(
-              "Nenhuma parcela recebida para baixa."
+              "Nenhuma parcela foi recebida para baixa."
             );
           }
 
           if (!config) {
             throw new Error(
-              "Configuração M8 do banco não informada."
-            );
-          }
-
-          if (
-            Number(
-              config.contaContabilId
-            ) <= 0
-          ) {
-            throw new Error(
-              "Conta Contábil não configurada."
-            );
-          }
-
-          if (
-            Number(
-              config.historicoId
-            ) <= 0
-          ) {
-            throw new Error(
-              "Histórico não configurado."
-            );
-          }
-
-          if (
-            Number(
-              config.meioPagamentoId
-            ) <= 0
-          ) {
-            throw new Error(
-              "Meio de Pagamento não configurado."
+              "Configuração do banco não informada."
             );
           }
 
           /* ==================================================
-             INÍCIO
+             VALIDAR CONTA CONTÁBIL
+          ================================================== */
+
+          const contaContabilId =
+            Number(
+              config.contaContabilId
+            );
+
+          if (
+            !Number.isFinite(
+              contaContabilId
+            ) ||
+            contaContabilId <= 0
+          ) {
+            throw new Error(
+              "Conta Contábil inválida. Configure o banco antes de efetuar a baixa."
+            );
+          }
+
+          /* ==================================================
+             VALIDAR HISTÓRICO
+          ================================================== */
+
+          const historicoId =
+            Number(
+              config.historicoId
+            );
+
+          if (
+            !Number.isFinite(
+              historicoId
+            ) ||
+            historicoId <= 0
+          ) {
+            throw new Error(
+              "Histórico inválido. Configure o banco antes de efetuar a baixa."
+            );
+          }
+
+          /* ==================================================
+             VALIDAR MEIO DE PAGAMENTO
+          ================================================== */
+
+          const meioPagamentoId =
+            Number(
+              config.meioPagamentoId
+            );
+
+          if (
+            !Number.isFinite(
+              meioPagamentoId
+            ) ||
+            meioPagamentoId <= 0
+          ) {
+            throw new Error(
+              "Meio de Pagamento inválido. Configure o banco antes de efetuar a baixa."
+            );
+          }
+
+          /* ==================================================
+             INICIAR PROCESSAMENTO
           ================================================== */
 
           enviar({
-            type: "start",
+            type:
+              "start",
+
             operation:
               "baixa",
+
             current: 0,
-            total: rows.length,
+
+            total:
+              rows.length,
+
             label:
               "Autenticando no M8...",
           });
 
           /* ==================================================
              AUTENTICAÇÃO
+
+             Fazemos apenas uma autenticação para todas
+             as parcelas da operação.
           ================================================== */
 
           const token =
@@ -198,22 +389,29 @@ export async function POST(
             );
 
           enviar({
-            type: "status",
+            type:
+              "status",
+
             operation:
               "baixa",
+
             current: 0,
-            total: rows.length,
+
+            total:
+              rows.length,
+
             label:
               "Autenticação concluída. Iniciando baixas...",
           });
 
           /* ==================================================
-             PROCESSAMENTO
+             PROCESSAR PARCELAS
           ================================================== */
 
           for (
             let index = 0;
-            index < rows.length;
+            index <
+            rows.length;
             index++
           ) {
             const row =
@@ -222,102 +420,225 @@ export async function POST(
             const atual =
               index + 1;
 
+            /* =================================================
+               STATUS ATUAL
+            ================================================= */
+
             enviar({
-              type: "status",
+              type:
+                "status",
+
               operation:
                 "baixa",
+
               current:
                 index,
+
               total:
                 rows.length,
+
               label:
-                `Baixando ${row.cliente || `parcela ${row.parcelaId}`}`,
+                `Baixando parcela ${row.parcelaId ?? "—"} do título ${row.tituloId ?? "—"}...`,
             });
 
             try {
+              /* ===============================================
+                 VALIDAR TÍTULO
+              =============================================== */
+
+              const tituloId =
+                Number(
+                  row.tituloId
+                );
+
               if (
-                !row.tituloId ||
-                !row.parcelaId
+                !Number.isFinite(
+                  tituloId
+                ) ||
+                tituloId <= 0
               ) {
                 throw new Error(
-                  "Título ou parcela não informado."
+                  "Título M8 inválido ou não informado."
                 );
               }
 
+              /* ===============================================
+                 VALIDAR PARCELA
+              =============================================== */
+
+              const parcelaId =
+                Number(
+                  row.parcelaId
+                );
+
               if (
-                row.valor == null ||
-                row.valor <= 0
+                !Number.isFinite(
+                  parcelaId
+                ) ||
+                parcelaId <= 0
               ) {
                 throw new Error(
-                  "Valor inválido para baixa."
+                  "Parcela M8 inválida ou não informada."
                 );
               }
+
+              /* ===============================================
+                 VALIDAR VALOR
+              =============================================== */
+
+              const valor =
+                normalizarValor(
+                  row.valor
+                );
+
+              if (
+                !Number.isFinite(
+                  valor
+                ) ||
+                valor <= 0
+              ) {
+                throw new Error(
+                  "Valor da baixa inválido."
+                );
+              }
+
+              /* ===============================================
+                 DATA DA BAIXA
+
+                 Vem da Data de Pagamento do CSV.
+              =============================================== */
+
+              const dataBaixa =
+                dataPagamentoParaIso(
+                  row.dataPagamento
+                );
+
+              /* ===============================================
+                 INFORMAÇÕES EXISTENTES NO M8
+
+                 Primeiro procura na PARCELA.
+
+                 Caso o campo não exista ou esteja vazio,
+                 utiliza o valor existente no TÍTULO.
+
+                 Isso evita perder informações já existentes.
+              =============================================== */
+
+              const observacaoExistente =
+                row.parcelaM8
+                  ?.observacaoInterna ??
+                row.tituloM8
+                  ?.observacaoInterna ??
+                "";
+
+              const complementoExistente =
+                row.parcelaM8
+                  ?.complemento ??
+                row.tituloM8
+                  ?.complemento ??
+                "";
+
+              /* ===============================================
+                 OBSERVAÇÃO FINAL
+              =============================================== */
+
+              const observacaoInterna =
+                acrescentarTexto(
+                  observacaoExistente,
+                  config.observacaoInterna
+                );
+
+              /* ===============================================
+                 COMPLEMENTO FINAL
+              =============================================== */
+
+              const complemento =
+                acrescentarTexto(
+                  complementoExistente,
+                  config.complemento
+                );
+
+              /* ===============================================
+                 PAYLOAD DA BAIXA
+              =============================================== */
 
               const payload = {
+                /*
+                 * Data de pagamento do CSV.
+                 */
                 data:
-                  dataPagamentoParaIso(
-                    row.dataPagamento
-                  ),
+                  dataBaixa,
 
-                contaContabilId:
-                  Number(
-                    config.contaContabilId
-                  ),
+                /*
+                 * Configuração do banco.
+                 */
+                contaContabilId,
 
-                historicoId:
-                  Number(
-                    config.historicoId
-                  ),
+                historicoId,
 
-                meioPagamentoId:
-                  Number(
-                    config.meioPagamentoId
-                  ),
+                meioPagamentoId,
 
-                valor:
-                  Number(
-                    row.valor
-                  ),
+                /*
+                 * Valor da linha do CSV.
+                 */
+                valor,
 
-                chequeId: 0,
+                /*
+                 * Mantemos os campos financeiros zerados
+                 * quando não há juros, multa ou desconto.
+                 */
+                valorJuros:
+                  0,
 
-                valorJuros: 0,
+                valorMulta:
+                  0,
 
-                valorMulta: 0,
-
-                valorDesconto: 0,
+                valorDesconto:
+                  0,
 
                 taxaOperadoraCartao:
                   0,
 
-                observacaoInterna:
-                  config.observacaoInterna ||
-                  "Baixa automática via conciliação bancária",
+                /*
+                 * Mantém o conteúdo existente do M8
+                 * e acrescenta o configurado pelo usuário.
+                 */
+                observacaoInterna,
 
-                complemento:
-                  config.complemento ||
-                  "",
+                complemento,
               };
+
+              /* ===============================================
+                 EFETUAR BAIXA NO M8
+              =============================================== */
 
               const retorno =
                 await baixarParcela(
                   token,
-                  row.tituloId,
-                  row.parcelaId,
+                  tituloId,
+                  parcelaId,
                   payload
                 );
+
+              /* ===============================================
+                 SUCESSO
+              =============================================== */
 
               enviar({
                 type:
                   "progress",
+
                 operation:
                   "baixa",
+
                 current:
                   atual,
+
                 total:
                   rows.length,
+
                 label:
-                  row.cliente,
+                  `Parcela ${parcelaId} baixada com sucesso.`,
 
                 result: {
                   rowId:
@@ -329,27 +650,45 @@ export async function POST(
                   statusMensagem:
                     "Parcela baixada com sucesso no M8.",
 
+                  tituloId,
+
+                  parcelaId,
+
                   baixaM8:
                     retorno,
+
+                  apiError:
+                    undefined,
                 },
               });
             } catch (error) {
+              /* ===============================================
+                 ERRO INDIVIDUAL
+
+                 Uma parcela com erro não interrompe
+                 as demais parcelas.
+              =============================================== */
+
               const mensagem =
                 error instanceof Error
                   ? error.message
-                  : "Erro ao baixar parcela.";
+                  : "Erro inesperado ao baixar parcela.";
 
               enviar({
                 type:
                   "progress",
+
                 operation:
                   "baixa",
+
                 current:
                   atual,
+
                 total:
                   rows.length,
+
                 label:
-                  row.cliente,
+                  `Erro ao baixar parcela ${row.parcelaId ?? "—"}.`,
 
                 result: {
                   rowId:
@@ -359,7 +698,13 @@ export async function POST(
                     "erro",
 
                   statusMensagem:
-                    "Erro ao baixar parcela.",
+                    "Erro ao baixar parcela no M8.",
+
+                  tituloId:
+                    row.tituloId,
+
+                  parcelaId:
+                    row.parcelaId,
 
                   apiError:
                     mensagem,
@@ -368,22 +713,40 @@ export async function POST(
             }
           }
 
+          /* ==================================================
+             FINAL
+          ================================================== */
+
           enviar({
-            type: "done",
+            type:
+              "done",
+
             operation:
               "baixa",
+
             current:
               rows.length,
+
             total:
               rows.length,
+
             label:
-              "Baixas concluídas.",
+              "Processamento de baixa concluído.",
           });
         } catch (error) {
+          /* ==================================================
+             ERRO GERAL
+
+             Erros como autenticação ou configuração inválida.
+          ================================================== */
+
           enviar({
-            type: "error",
+            type:
+              "error",
+
             operation:
               "baixa",
+
             error:
               error instanceof Error
                 ? error.message
@@ -394,6 +757,10 @@ export async function POST(
         }
       },
     });
+
+  /* ==========================================================
+     RESPONSE STREAM
+  ========================================================== */
 
   return new Response(
     stream,
