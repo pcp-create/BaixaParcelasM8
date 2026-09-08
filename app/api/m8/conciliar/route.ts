@@ -17,143 +17,282 @@ import {
 const TOLERANCIA_VALOR = 0.01;
 
 /*
- * Ajuda a evitar buffering do stream
- * em alguns servidores / proxies.
+ * Padding ajuda a evitar buffering do stream
+ * em alguns servidores/proxies.
  */
-const STREAM_PADDING =
-  " ".repeat(2048);
+const STREAM_PADDING = " ".repeat(2048);
+
+/*
+ * Palavras genéricas que não devem ser utilizadas
+ * como referência para localizar fornecedor.
+ *
+ * Isso é especialmente importante para o campo complemento.
+ *
+ * Exemplo:
+ *
+ * CSV:
+ * PG.P/INTERNET - ELGI COMPRESSORES DO BRASIL
+ *
+ * complemento:
+ * PAGAMENTO ELGI COMPRESSORES
+ *
+ * Queremos encontrar ELGI e não PAGAMENTO.
+ */
+const PALAVRAS_IGNORADAS = new Set([
+  "PG",
+  "P",
+  "PAGAMENTO",
+  "PAG",
+  "INTERNET",
+  "DEBITO",
+  "DÉBITO",
+  "CREDITO",
+  "CRÉDITO",
+  "PIX",
+  "TED",
+  "DOC",
+  "TRANSFERENCIA",
+  "TRANSFERÊNCIA",
+  "BANCO",
+  "LTDA",
+  "LTD",
+  "ME",
+  "EPP",
+  "SA",
+  "S",
+  "A",
+  "DO",
+  "DA",
+  "DOS",
+  "DAS",
+  "DE",
+  "E",
+  "PARA",
+  "POR",
+]);
+
+/* ============================================================
+   TIPOS
+============================================================ */
+
+type ModoConciliacao =
+  | "pendentes"
+  | "todos";
 
 /* ============================================================
    NORMALIZAR TEXTO
 ============================================================ */
 
-function normalizarTexto(
-  valor: unknown
-): string {
+function normalizarTexto(valor: unknown): string {
   return String(valor ?? "")
     .normalize("NFD")
-    .replace(
-      /[\u0300-\u036f]/g,
-      ""
-    )
+    .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /* ============================================================
-   EXTRAIR NOME DO FORNECEDOR
+   REMOVER CÓDIGO DO FORNECEDOR
 
    Exemplo:
 
-   21695 - ELGI COMPRESSORES DO BRASIL IMP. EXP.LTD - 10560347000142
+   21695 - ELGI COMPRESSORES DO BRASIL...
 
    Resultado:
 
-   ELGI COMPRESSORES DO BRASIL IMP. EXP.LTD - 10560347000142
+   ELGI COMPRESSORES DO BRASIL...
 ============================================================ */
 
-function removerCodigoFornecedor(
-  valor: unknown
-): string {
-  return normalizarTexto(
-    valor
-  ).replace(
-    /^\d+\s*-\s*/,
-    ""
-  );
+function removerCodigoFornecedor(valor: unknown): string {
+  return normalizarTexto(valor).replace(/^\d+\s+/, "").trim();
 }
 
 /* ============================================================
-   EXTRAIR PRIMEIRA PALAVRA
+   PRIMEIRA PALAVRA DO FORNECEDOR
 
-   ELGI COMPRESSORES...
+   Mantemos esta regra porque ela já funcionava bem
+   para fornecedorNome.
+
+   Exemplo:
+
+   ELGI COMPRESSORES DO BRASIL
    ↓
    ELGI
 ============================================================ */
 
-function extrairPrefixoFornecedor(
-  valor: unknown
-): string {
-  const texto =
-    removerCodigoFornecedor(
-      valor
-    );
+function extrairPrefixoFornecedor(valor: unknown): string {
+  const texto = removerCodigoFornecedor(valor);
 
-  return (
-    texto
-      .split(/\s+/)
-      .filter(Boolean)[0] ||
-    ""
-  );
+  return texto.split(/\s+/).filter(Boolean)[0] || "";
 }
 
 /* ============================================================
-   VERIFICAR CLIENTE DO CSV
+   PALAVRAS RELEVANTES DO CSV
+
+   Exemplo:
+
+   PG.P/INTERNET - ELGI COMPRESSORES DO BRASIL.
+
+   Resultado aproximado:
+
+   ELGI
+   COMPRESSORES
+   BRASIL
+
+   Palavras genéricas são descartadas.
 ============================================================ */
 
-function clienteCompativel(
+function palavrasRelevantesCsv(clienteCsv: string): string[] {
+  const texto = normalizarTexto(clienteCsv);
+
+  if (!texto) {
+    return [];
+  }
+
+  return texto
+    .split(/\s+/)
+    .map((palavra) => palavra.trim())
+    .filter(Boolean)
+    .filter((palavra) => palavra.length >= 3)
+    .filter((palavra) => !PALAVRAS_IGNORADAS.has(palavra));
+}
+
+/* ============================================================
+   COMPATIBILIDADE COM fornecedorNome
+
+   Mantém a regra que já tínhamos:
+
+   primeira palavra relevante do fornecedor M8
+   precisa aparecer no cliente do CSV.
+============================================================ */
+
+function clienteCompativelFornecedor(
   clienteCsv: string,
   fornecedorM8: unknown
 ): boolean {
-  const cliente =
-    normalizarTexto(
-      clienteCsv
-    );
+  const cliente = normalizarTexto(clienteCsv);
 
   if (!cliente) {
     return false;
   }
 
-  const prefixo =
-    extrairPrefixoFornecedor(
-      fornecedorM8
-    );
+  const prefixo = extrairPrefixoFornecedor(fornecedorM8);
 
   if (!prefixo) {
     return false;
   }
 
-  return cliente.includes(
-    prefixo
+  return cliente.includes(prefixo);
+}
+
+/* ============================================================
+   COMPATIBILIDADE COM complemento
+
+   Aqui não podemos pegar simplesmente a primeira palavra
+   do complemento.
+
+   Exemplo:
+
+   complemento:
+   PAGAMENTO ELGI COMPRESSORES
+
+   primeira palavra = PAGAMENTO
+
+   Isso não serviria.
+
+   Então pegamos as palavras relevantes do CSV e verificamos
+   se alguma delas existe no complemento.
+
+   Exemplo:
+
+   CSV:
+   PG.P/INTERNET - ELGI COMPRESSORES DO BRASIL
+
+   complemento:
+   PAGAMENTO ELGI COMPRESSORES
+
+   ELGI → encontrado
+============================================================ */
+
+function clienteCompativelComplemento(
+  clienteCsv: string,
+  complementoM8: unknown
+): boolean {
+  const complemento = normalizarTexto(complementoM8);
+
+  if (!complemento) {
+    return false;
+  }
+
+  const palavrasCsv = palavrasRelevantesCsv(clienteCsv);
+
+  if (!palavrasCsv.length) {
+    return false;
+  }
+
+  return palavrasCsv.some((palavra) =>
+    complemento.includes(palavra)
   );
+}
+
+/* ============================================================
+   TÍTULO COMPATÍVEL
+
+   NOVA REGRA:
+
+   fornecedorNome
+   OU
+   complemento
+
+   Se encontrar em qualquer um dos dois,
+   o título entra como candidato.
+============================================================ */
+
+function tituloCompativelComCliente(
+  row: NormalizedCsvRow,
+  titulo: M8ContaPagar
+): boolean {
+  const encontrouFornecedor =
+    clienteCompativelFornecedor(
+      row.cliente,
+      titulo.fornecedorNome
+    );
+
+  const encontrouComplemento =
+    clienteCompativelComplemento(
+      row.cliente,
+      titulo.complemento
+    );
+
+  return encontrouFornecedor || encontrouComplemento;
 }
 
 /* ============================================================
    NORMALIZAR VALOR
 ============================================================ */
 
-function normalizarValor(
-  valor: unknown
-): number {
-  if (
-    typeof valor ===
-    "number"
-  ) {
+function normalizarValor(valor: unknown): number {
+  if (typeof valor === "number") {
     return valor;
   }
 
-  const texto =
-    String(valor ?? "")
-      .trim()
-      .replace(
-        /R\$\s*/gi,
-        ""
-      )
-      .replace(/\s/g, "");
+  const texto = String(valor ?? "")
+    .trim()
+    .replace(/R\$\s*/gi, "")
+    .replace(/\s/g, "");
 
   if (!texto) {
     return 0;
   }
 
   /*
-   * Formato brasileiro.
+   * Formato brasileiro:
    *
    * 10.739,00
    */
-  if (
-    texto.includes(",")
-  ) {
+  if (texto.includes(",")) {
     return (
       Number(
         texto
@@ -163,24 +302,16 @@ function normalizarValor(
     );
   }
 
-  return (
-    Number(texto) || 0
-  );
+  return Number(texto) || 0;
 }
 
 /* ============================================================
    COMPARAR VALORES
 ============================================================ */
 
-function mesmoValor(
-  a: unknown,
-  b: unknown
-): boolean {
+function mesmoValor(a: unknown, b: unknown): boolean {
   return (
-    Math.abs(
-      normalizarValor(a) -
-        normalizarValor(b)
-    ) <=
+    Math.abs(normalizarValor(a) - normalizarValor(b)) <=
     TOLERANCIA_VALOR
   );
 }
@@ -191,9 +322,7 @@ function mesmoValor(
    Aceita:
 
    04/09/2026
-
    2026-09-04
-
    2026-09-04T03:00:00
 
    Resultado:
@@ -201,30 +330,20 @@ function mesmoValor(
    2026-09-04
 ============================================================ */
 
-function normalizarData(
-  valor: unknown
-): string {
-  const texto =
-    String(valor ?? "")
-      .trim();
+function normalizarData(valor: unknown): string {
+  const texto = String(valor ?? "").trim();
 
   if (!texto) {
     return "";
   }
 
-  const br =
-    /^(\d{2})\/(\d{2})\/(\d{4})/.exec(
-      texto
-    );
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(texto);
 
   if (br) {
     return `${br[3]}-${br[2]}-${br[1]}`;
   }
 
-  const iso =
-    /^(\d{4})-(\d{2})-(\d{2})/.exec(
-      texto
-    );
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto);
 
   if (iso) {
     return `${iso[1]}-${iso[2]}-${iso[3]}`;
@@ -234,100 +353,102 @@ function normalizarData(
 }
 
 /* ============================================================
-   ETAPA 2
-   LOCALIZAR TÍTULOS PELO FORNECEDOR
+   TÍTULO PENDENTE
+
+   Não dependemos do texto de "status" do M8.
+
+   A regra utilizada é:
+
+   saldo > 0
+
+   Isso também inclui títulos parcialmente pagos,
+   porque ainda possuem saldo pendente.
+============================================================ */
+
+function tituloEstaPendente(titulo: M8ContaPagar): boolean {
+  const saldo = normalizarValor(titulo.saldo);
+
+  return saldo > TOLERANCIA_VALOR;
+}
+
+/* ============================================================
+   FILTRAR TÍTULOS PELO MODO DE CONCILIAÇÃO
+============================================================ */
+
+function filtrarTitulosPorModo(
+  titulos: M8ContaPagar[],
+  modo: ModoConciliacao
+): M8ContaPagar[] {
+  if (modo === "todos") {
+    return titulos;
+  }
+
+  return titulos.filter(tituloEstaPendente);
+}
+
+/* ============================================================
+   LOCALIZAR TÍTULOS DO FORNECEDOR
 
    IMPORTANTE:
 
-   NÃO COMPARAMOS MAIS O VALOR DO TÍTULO.
+   NÃO COMPARAMOS O VALOR DO TÍTULO.
 
-   titulo.valor pode ser a soma de várias parcelas.
+   titulo.valor pode representar a soma
+   de várias parcelas.
 ============================================================ */
 
 function encontrarTitulosDoFornecedor(
   row: NormalizedCsvRow,
   titulos: M8ContaPagar[]
 ): M8ContaPagar[] {
-  return titulos.filter(
-    (titulo) =>
-      clienteCompativel(
-        row.cliente,
-        titulo.fornecedorNome
-      )
+  return titulos.filter((titulo) =>
+    tituloCompativelComCliente(row, titulo)
   );
 }
 
 /* ============================================================
-   ETAPA 3
-   LOCALIZAR A PARCELA
+   PARCELA COMPATÍVEL
 
-   Aqui sim fazemos a comparação financeira.
-
-   Regra:
+   A comparação financeira acontece aqui.
 
    parcela.valor
-      =
+        =
    CSV.valor
 
    parcela.vencimento
-      =
+        =
    CSV.dataPagamento
 
    parcela.pessoaNome
-      compatível com
+        compatível com
    CSV.cliente
+
+   OBSERVAÇÃO:
+
+   Mantemos a comparação de cliente da parcela como já estava
+   funcionando. A ampliação fornecedorNome/complemento ocorre
+   na localização dos títulos candidatos.
 ============================================================ */
 
 function encontrarParcelasCompativeis(
   row: NormalizedCsvRow,
   parcelas: M8Parcela[]
 ): M8Parcela[] {
-  return parcelas.filter(
-    (parcela) => {
-      /* -----------------------------------------------
-         VALOR
-      ------------------------------------------------ */
+  return parcelas.filter((parcela) => {
+    const valorOk = mesmoValor(parcela.valor, row.valor);
 
-      const valorOk =
-        mesmoValor(
-          parcela.valor,
-          row.valor
-        );
+    const dataM8 = normalizarData(parcela.vencimento);
+    const dataCsv = normalizarData(row.dataPagamento);
 
-      /* -----------------------------------------------
-         DATA
-      ------------------------------------------------ */
+    const dataOk = dataM8 === dataCsv;
 
-      const dataM8 =
-        normalizarData(
-          parcela.vencimento
-        );
+    const clienteOk = clienteCompativelFornecedor(
+      row.cliente,
+      parcela.pessoaNome
+    );
 
-      const dataCsv =
-        normalizarData(
-          row.dataPagamento
-        );
-
-      const dataOk =
-        dataM8 === dataCsv;
-
-      /* -----------------------------------------------
-         CLIENTE
-      ------------------------------------------------ */
-
-      const clienteOk =
-        clienteCompativel(
-          row.cliente,
-          parcela.pessoaNome
-        );
-
-      return (
-        valorOk &&
-        dataOk &&
-        clienteOk
-      );
-    }
-  );
+    return valorOk && dataOk && clienteOk;
+  });
 }
 
 /* ============================================================
@@ -339,57 +460,23 @@ type SituacaoParcela =
   | "baixada"
   | "parcial";
 
-/*
- * Regras:
- *
- * saldo <= 0
- *      → baixada
- *
- * 0 < saldo < valor
- *      → parcial
- *
- * saldo aproximadamente igual ao valor
- *      → aberta
- */
-function situacaoParcela(
-  parcela: M8Parcela
-): SituacaoParcela {
-  const valor =
-    normalizarValor(
-      parcela.valor
-    );
+function situacaoParcela(parcela: M8Parcela): SituacaoParcela {
+  const valor = normalizarValor(parcela.valor);
+  const saldo = normalizarValor(parcela.saldo);
 
-  const saldo =
-    normalizarValor(
-      parcela.saldo
-    );
-
-  /* -----------------------------------------------
-     JÁ BAIXADA
-  ------------------------------------------------ */
-
-  if (
-    saldo <=
-    TOLERANCIA_VALOR
-  ) {
+  /*
+   * Saldo zerado.
+   */
+  if (saldo <= TOLERANCIA_VALOR) {
     return "baixada";
   }
 
-  /* -----------------------------------------------
-     PARCIALMENTE BAIXADA
-  ------------------------------------------------ */
-
-  if (
-    saldo <
-    valor -
-      TOLERANCIA_VALOR
-  ) {
+  /*
+   * Saldo menor que valor original.
+   */
+  if (saldo < valor - TOLERANCIA_VALOR) {
     return "parcial";
   }
-
-  /* -----------------------------------------------
-     EM ABERTO
-  ------------------------------------------------ */
 
   return "aberta";
 }
@@ -398,602 +485,391 @@ function situacaoParcela(
    STREAM
 ============================================================ */
 
-function criarEvento(
-  dados: any
-): string {
-  return (
-    JSON.stringify(dados) +
-    "\n" +
-    STREAM_PADDING +
-    "\n"
-  );
+function criarEvento(dados: any): string {
+  return JSON.stringify(dados) + "\n" + STREAM_PADDING + "\n";
 }
 
 /* ============================================================
    POST
 ============================================================ */
 
-export async function POST(
-  request: Request
-) {
-  const encoder =
-    new TextEncoder();
+export async function POST(request: Request) {
+  const encoder = new TextEncoder();
 
-  const stream =
-    new ReadableStream({
-      async start(
-        controller
-      ) {
-        function enviar(
-          dados: any
+  const stream = new ReadableStream({
+    async start(controller) {
+      function enviar(dados: any) {
+        controller.enqueue(
+          encoder.encode(
+            criarEvento(dados)
+          )
+        );
+      }
+
+      try {
+        /* ====================================================
+           RECEBER DADOS
+        ==================================================== */
+
+        const body = await request.json();
+
+        const company = Number(body?.company);
+
+        const rows = body?.rows as NormalizedCsvRow[];
+
+        const modoConciliacao: ModoConciliacao =
+          body?.modoConciliacao === "todos"
+            ? "todos"
+            : "pendentes";
+
+        /* ====================================================
+           VALIDAR
+        ==================================================== */
+
+        if (
+          !Number.isFinite(company) ||
+          company <= 0
         ) {
-          controller.enqueue(
-            encoder.encode(
-              criarEvento(
-                dados
-              )
-            )
+          throw new Error(
+            "Empresa M8 inválida."
           );
         }
 
-        try {
-          /* ==================================================
-             RECEBER DADOS
-          ================================================== */
+        if (
+          !Array.isArray(rows) ||
+          !rows.length
+        ) {
+          throw new Error(
+            "Nenhum registro recebido para conciliação."
+          );
+        }
 
-          const body =
-            await request.json();
+        /* ====================================================
+           INÍCIO
+        ==================================================== */
 
-          const company =
-            Number(
-              body?.company
-            );
+        enviar({
+          type: "start",
+          operation: "conciliacao",
+          current: 0,
+          total: rows.length,
+          label: "Autenticando no M8...",
+        });
 
-          const rows =
-            body?.rows as NormalizedCsvRow[];
+        /* ====================================================
+           AUTENTICAÇÃO
+        ==================================================== */
 
-          /* ==================================================
-             VALIDAR
-          ================================================== */
+        const token = await autenticarM8(company);
 
-          if (
-            !Number.isFinite(
-              company
-            ) ||
-            company <= 0
-          ) {
-            throw new Error(
-              "Empresa M8 inválida."
-            );
-          }
+        enviar({
+          type: "status",
+          operation: "conciliacao",
+          current: 0,
+          total: rows.length,
+          label:
+            modoConciliacao === "pendentes"
+              ? "Consultando títulos pendentes de Contas a Pagar..."
+              : "Consultando todos os títulos de Contas a Pagar...",
+        });
 
-          if (
-            !Array.isArray(
-              rows
-            ) ||
-            !rows.length
-          ) {
-            throw new Error(
-              "Nenhum registro recebido para conciliação."
-            );
-          }
+        /* ====================================================
+           CARREGAR CONTAS A PAGAR
+        ==================================================== */
 
-          /* ==================================================
-             INÍCIO
-          ================================================== */
+        const todosTitulos = await listarContasPagar(token);
+
+        /* ====================================================
+           FILTRO LOCAL POR MODO
+
+           O endpoint continua carregando a lista retornada
+           pelo M8.
+
+           Depois filtramos:
+
+           pendentes → saldo > 0
+           todos     → sem filtro
+
+           Dessa forma não dependemos do texto do status.
+        ==================================================== */
+
+        const titulos = filtrarTitulosPorModo(
+          todosTitulos,
+          modoConciliacao
+        );
+
+        enviar({
+          type: "status",
+          operation: "conciliacao",
+          current: 0,
+          total: rows.length,
+          label:
+            modoConciliacao === "pendentes"
+              ? `${titulos.length} título(s) pendente(s) de ${todosTitulos.length} título(s) carregado(s).`
+              : `${titulos.length} título(s) carregado(s) para verificação completa.`,
+        });
+
+        /* ====================================================
+           CACHE DE PARCELAS
+
+           Evita consultar o mesmo título várias vezes.
+        ==================================================== */
+
+        const parcelasCache = new Map<
+          number,
+          M8Parcela[]
+        >();
+
+        /* ====================================================
+           PROCESSAR CSV
+        ==================================================== */
+
+        for (
+          let index = 0;
+          index < rows.length;
+          index++
+        ) {
+          const row = rows[index];
+
+          const atual = index + 1;
 
           enviar({
-            type:
-              "start",
-
-            operation:
-              "conciliacao",
-
-            current: 0,
-
-            total:
-              rows.length,
-
-            label:
-              "Autenticando no M8...",
+            type: "status",
+            operation: "conciliacao",
+            current: index,
+            total: rows.length,
+            label: `Analisando ${
+              row.cliente ||
+              `linha ${row.numeroLinha}`
+            }`,
           });
 
           /* ==================================================
-             ETAPA 1
-             AUTENTICAÇÃO
+             LOCALIZAR TÍTULOS
+
+             fornecedorNome
+             OU
+             complemento
+
+             Valor do título NÃO participa.
           ================================================== */
 
-          const token =
-            await autenticarM8(
-              company
+          const titulosFornecedor =
+            encontrarTitulosDoFornecedor(
+              row,
+              titulos
             );
 
-          enviar({
-            type:
-              "status",
-
-            operation:
-              "conciliacao",
-
-            current: 0,
-
-            total:
-              rows.length,
-
-            label:
-              "Consultando todos os títulos de Contas a Pagar...",
-          });
-
           /* ==================================================
-             ETAPA 2
-             TODOS OS TÍTULOS
-
-             NÃO FILTRAR SOMENTE PENDENTES.
-
-             Precisamos também localizar parcelas
-             que eventualmente já foram baixadas.
+             NENHUM TÍTULO
           ================================================== */
 
-          const titulos =
-            await listarContasPagar(
-              token
-            );
-
-          enviar({
-            type:
-              "status",
-
-            operation:
-              "conciliacao",
-
-            current: 0,
-
-            total:
-              rows.length,
-
-            label:
-              `${titulos.length} título(s) carregado(s). Analisando fornecedores...`,
-          });
-
-          /* ==================================================
-             CACHE DE PARCELAS
-
-             Evita consultar o mesmo título várias vezes.
-          ================================================== */
-
-          const parcelasCache =
-            new Map<
-              number,
-              M8Parcela[]
-            >();
-
-          /* ==================================================
-             PROCESSAR LINHAS CSV
-          ================================================== */
-
-          for (
-            let index = 0;
-            index <
-            rows.length;
-            index++
-          ) {
-            const row =
-              rows[index];
-
-            const atual =
-              index + 1;
-
-            /* =================================================
-               STATUS DO PROCESSAMENTO
-            ================================================= */
-
+          if (!titulosFornecedor.length) {
             enviar({
-              type:
-                "status",
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label: row.cliente,
 
-              operation:
-                "conciliacao",
+              result: {
+                rowId: row.rowId,
 
-              current:
-                index,
+                status: "nao_encontrado",
 
-              total:
-                rows.length,
-
-              label:
-                `Analisando ${row.cliente || `linha ${row.numeroLinha}`}`,
+                statusMensagem:
+                  modoConciliacao === "pendentes"
+                    ? "Nenhum título pendente compatível foi localizado. Se o pagamento já tiver sido processado, utilize “Verificar todos os títulos”."
+                    : "Nenhum título compatível foi localizado no M8 por Fornecedor ou Complemento.",
+              },
             });
 
-            /* =================================================
-               ETAPA 2
-               LOCALIZAR TÍTULOS PELO FORNECEDOR
+            continue;
+          }
 
-               IMPORTANTE:
+          /* ==================================================
+             CONSULTAR PARCELAS
+          ================================================== */
 
-               Valor do título NÃO é usado.
-            ================================================= */
+          const correspondencias: Array<{
+            titulo: M8ContaPagar;
+            parcela: M8Parcela;
+          }> = [];
 
-            const titulosFornecedor =
-              encontrarTitulosDoFornecedor(
-                row,
-                titulos
-              );
+          for (const titulo of titulosFornecedor) {
+            let parcelas = parcelasCache.get(titulo.id);
 
-            /* =================================================
-               NENHUM TÍTULO DO FORNECEDOR
-            ================================================= */
-
-            if (
-              titulosFornecedor.length ===
-              0
-            ) {
-              enviar({
-                type:
-                  "progress",
-
-                operation:
-                  "conciliacao",
-
-                current:
-                  atual,
-
-                total:
-                  rows.length,
-
-                label:
-                  row.cliente,
-
-                result: {
-                  rowId:
-                    row.rowId,
-
-                  status:
-                    "nao_encontrado",
-
-                  statusMensagem:
-                    "Nenhum título deste fornecedor foi localizado no M8.",
-                },
-              });
-
-              continue;
-            }
-
-            /* =================================================
-               ETAPA 3
-               CONSULTAR AS PARCELAS DOS TÍTULOS
-            ================================================= */
-
-            const correspondencias:
-              Array<{
-                titulo: M8ContaPagar;
-                parcela: M8Parcela;
-              }> = [];
-
-            for (
-              const titulo
-              of titulosFornecedor
-            ) {
-              let parcelas =
-                parcelasCache.get(
+            if (!parcelas) {
+              try {
+                parcelas = await listarParcelas(
+                  token,
                   titulo.id
                 );
 
-              /* -----------------------------------------------
-                 CONSULTAR SOMENTE UMA VEZ
-              ------------------------------------------------ */
-
-              if (!parcelas) {
-                try {
-                  parcelas =
-                    await listarParcelas(
-                      token,
-                      titulo.id
-                    );
-
-                  parcelasCache.set(
-                    titulo.id,
-                    parcelas
-                  );
-                } catch (error) {
-                  /*
-                   * Uma falha em um título específico
-                   * não interrompe toda a conciliação.
-                   */
-
-                  console.error(
-                    `[CONCILIACAO] Erro ao consultar parcelas do título ${titulo.id}:`,
-                    error
-                  );
-
-                  parcelas =
-                    [];
-
-                  parcelasCache.set(
-                    titulo.id,
-                    []
-                  );
-                }
-              }
-
-              /* -----------------------------------------------
-                 PARCELAS COMPATÍVEIS
-              ------------------------------------------------ */
-
-              const parcelasCompativeis =
-                encontrarParcelasCompativeis(
-                  row,
+                parcelasCache.set(
+                  titulo.id,
                   parcelas
                 );
+              } catch (error) {
+                console.error(
+                  `[CONCILIACAO] Erro ao consultar parcelas do título ${titulo.id}:`,
+                  error
+                );
 
-              for (
-                const parcela
-                of parcelasCompativeis
-              ) {
-                correspondencias.push(
-                  {
-                    titulo,
-                    parcela,
-                  }
+                parcelas = [];
+
+                parcelasCache.set(
+                  titulo.id,
+                  []
                 );
               }
             }
 
-            /* =================================================
-               NENHUMA PARCELA
-            ================================================= */
-
-            if (
-              correspondencias.length ===
-              0
-            ) {
-              enviar({
-                type:
-                  "progress",
-
-                operation:
-                  "conciliacao",
-
-                current:
-                  atual,
-
-                total:
-                  rows.length,
-
-                label:
-                  row.cliente,
-
-                result: {
-                  rowId:
-                    row.rowId,
-
-                  status:
-                    "nao_encontrado",
-
-                  statusMensagem:
-                    `${titulosFornecedor.length} título(s) do fornecedor localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento + Cliente.`,
-                },
-              });
-
-              continue;
-            }
-
-            /* =================================================
-               MAIS DE UMA PARCELA COMPATÍVEL
-
-               Não podemos escolher automaticamente.
-            ================================================= */
-
-            if (
-              correspondencias.length >
-              1
-            ) {
-              enviar({
-                type:
-                  "progress",
-
-                operation:
-                  "conciliacao",
-
-                current:
-                  atual,
-
-                total:
-                  rows.length,
-
-                label:
-                  row.cliente,
-
-                result: {
-                  rowId:
-                    row.rowId,
-
-                  status:
-                    "conflito",
-
-                  statusMensagem:
-                    `${correspondencias.length} parcelas correspondem a Valor + Data de Pagamento + Cliente. Necessária revisão manual.`,
-                },
-              });
-
-              continue;
-            }
-
-            /* =================================================
-               UMA ÚNICA PARCELA
-            ================================================= */
-
-            const match =
-              correspondencias[0];
-
-            const titulo =
-              match.titulo;
-
-            const parcela =
-              match.parcela;
-
-            const situacao =
-              situacaoParcela(
-                parcela
+            const parcelasCompativeis =
+              encontrarParcelasCompativeis(
+                row,
+                parcelas
               );
 
-            /* =================================================
-               JÁ BAIXADA
-            ================================================= */
-
-            if (
-              situacao ===
-              "baixada"
-            ) {
-              enviar({
-                type:
-                  "progress",
-
-                operation:
-                  "conciliacao",
-
-                current:
-                  atual,
-
-                total:
-                  rows.length,
-
-                label:
-                  row.cliente,
-
-                result: {
-                  rowId:
-                    row.rowId,
-
-                  status:
-                    "ja_baixada",
-
-                  statusMensagem:
-                    "Título e parcela encontrados. Esta parcela já está baixada no M8.",
-
-                  tituloId:
-                    titulo.id,
-
-                  parcelaId:
-                    parcela.id,
-
-                  fornecedorNome:
-                    titulo.fornecedorNome,
-
-                  parcelaValor:
-                    parcela.valor,
-
-                  parcelaSaldo:
-                    parcela.saldo,
-
-                  tituloM8:
-                    titulo,
-
-                  parcelaM8:
-                    parcela,
-                },
+            for (const parcela of parcelasCompativeis) {
+              correspondencias.push({
+                titulo,
+                parcela,
               });
-
-              continue;
             }
+          }
 
-            /* =================================================
-               PARCIALMENTE BAIXADA
-            ================================================= */
+          /* ==================================================
+             NENHUMA PARCELA
+          ================================================== */
 
-            if (
-              situacao ===
-              "parcial"
-            ) {
-              enviar({
-                type:
-                  "progress",
-
-                operation:
-                  "conciliacao",
-
-                current:
-                  atual,
-
-                total:
-                  rows.length,
-
-                label:
-                  row.cliente,
-
-                result: {
-                  rowId:
-                    row.rowId,
-
-                  status:
-                    "parcialmente_baixada",
-
-                  statusMensagem:
-                    `Título e parcela encontrados, porém a parcela possui baixa parcial. Valor: ${normalizarValor(
-                      parcela.valor
-                    ).toFixed(
-                      2
-                    )} | Saldo: ${normalizarValor(
-                      parcela.saldo
-                    ).toFixed(
-                      2
-                    )}. Revisão necessária.`,
-
-                  tituloId:
-                    titulo.id,
-
-                  parcelaId:
-                    parcela.id,
-
-                  fornecedorNome:
-                    titulo.fornecedorNome,
-
-                  parcelaValor:
-                    parcela.valor,
-
-                  parcelaSaldo:
-                    parcela.saldo,
-
-                  tituloM8:
-                    titulo,
-
-                  parcelaM8:
-                    parcela,
-                },
-              });
-
-              continue;
-            }
-
-            /* =================================================
-               PARCELA EM ABERTO
-               PRONTA PARA BAIXA
-            ================================================= */
-
+          if (!correspondencias.length) {
             enviar({
-              type:
-                "progress",
-
-              operation:
-                "conciliacao",
-
-              current:
-                atual,
-
-              total:
-                rows.length,
-
-              label:
-                row.cliente,
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label: row.cliente,
 
               result: {
-                rowId:
-                  row.rowId,
+                rowId: row.rowId,
 
-                status:
-                  "pronto",
+                status: "nao_encontrado",
 
                 statusMensagem:
-                  "Título e parcela encontrados. Parcela disponível para baixa.",
+                  modoConciliacao === "pendentes"
+                    ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento + Cliente. Caso já tenha sido processada, tente “Verificar todos os títulos”.`
+                    : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento + Cliente.`,
+              },
+            });
+
+            continue;
+          }
+
+          /* ==================================================
+             CONFLITO
+          ================================================== */
+
+          if (correspondencias.length > 1) {
+            enviar({
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label: row.cliente,
+
+              result: {
+                rowId: row.rowId,
+
+                status: "conflito",
+
+                statusMensagem:
+                  `${correspondencias.length} parcelas correspondem a Valor + Data de Pagamento + Cliente. Necessária revisão manual.`,
+              },
+            });
+
+            continue;
+          }
+
+          /* ==================================================
+             MATCH ÚNICO
+          ================================================== */
+
+          const match = correspondencias[0];
+
+          const titulo = match.titulo;
+          const parcela = match.parcela;
+
+          const situacao = situacaoParcela(parcela);
+
+          /* ==================================================
+             JÁ BAIXADA
+          ================================================== */
+
+          if (situacao === "baixada") {
+            enviar({
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label: row.cliente,
+
+              result: {
+                rowId: row.rowId,
+
+                status: "ja_baixada",
+
+                statusMensagem:
+                  "Título e parcela encontrados. Esta parcela já está baixada no M8.",
+
+                tituloId: titulo.id,
+
+                parcelaId: parcela.id,
+
+                fornecedorNome:
+                  titulo.fornecedorNome,
+
+                parcelaValor:
+                  parcela.valor,
+
+                parcelaSaldo:
+                  parcela.saldo,
+
+                tituloM8:
+                  titulo,
+
+                parcelaM8:
+                  parcela,
+              },
+            });
+
+            continue;
+          }
+
+          /* ==================================================
+             PARCIALMENTE BAIXADA
+          ================================================== */
+
+          if (situacao === "parcial") {
+            enviar({
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label: row.cliente,
+
+              result: {
+                rowId: row.rowId,
+
+                status:
+                  "parcialmente_baixada",
+
+                statusMensagem:
+                  `Título e parcela encontrados, porém a parcela possui baixa parcial. Valor: ${normalizarValor(
+                    parcela.valor
+                  ).toFixed(2)} | Saldo: ${normalizarValor(
+                    parcela.saldo
+                  ).toFixed(2)}. Revisão necessária.`,
 
                 tituloId:
                   titulo.id,
@@ -1017,66 +893,96 @@ export async function POST(
                   parcela,
               },
             });
+
+            continue;
           }
 
           /* ==================================================
-             FINAL
+             PRONTA
           ================================================== */
 
           enviar({
-            type:
-              "done",
+            type: "progress",
+            operation: "conciliacao",
+            current: atual,
+            total: rows.length,
+            label: row.cliente,
 
-            operation:
-              "conciliacao",
+            result: {
+              rowId: row.rowId,
 
-            current:
-              rows.length,
+              status: "pronto",
 
-            total:
-              rows.length,
+              statusMensagem:
+                "Título e parcela encontrados. Parcela disponível para baixa.",
 
-            label:
-              "Conciliação concluída.",
+              tituloId:
+                titulo.id,
+
+              parcelaId:
+                parcela.id,
+
+              fornecedorNome:
+                titulo.fornecedorNome,
+
+              parcelaValor:
+                parcela.valor,
+
+              parcelaSaldo:
+                parcela.saldo,
+
+              tituloM8:
+                titulo,
+
+              parcelaM8:
+                parcela,
+            },
           });
-        } catch (error) {
-          enviar({
-            type:
-              "error",
-
-            operation:
-              "conciliacao",
-
-            error:
-              error instanceof Error
-                ? error.message
-                : "Erro inesperado durante a conciliação.",
-          });
-        } finally {
-          controller.close();
         }
-      },
-    });
 
-  return new Response(
-    stream,
-    {
-      headers: {
-        "Content-Type":
-          "application/x-ndjson; charset=utf-8",
+        /* ====================================================
+           FINAL
+        ==================================================== */
 
-        "Cache-Control":
-          "no-cache, no-store, must-revalidate, no-transform",
+        enviar({
+          type: "done",
+          operation: "conciliacao",
+          current: rows.length,
+          total: rows.length,
+          label: "Conciliação concluída.",
+        });
+      } catch (error) {
+        enviar({
+          type: "error",
+          operation: "conciliacao",
 
-        "X-Accel-Buffering":
-          "no",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Erro inesperado durante a conciliação.",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-        "Content-Encoding":
-          "identity",
+  return new Response(stream, {
+    headers: {
+      "Content-Type":
+        "application/x-ndjson; charset=utf-8",
 
-        Connection:
-          "keep-alive",
-      },
-    }
-  );
+      "Cache-Control":
+        "no-cache, no-store, must-revalidate, no-transform",
+
+      "X-Accel-Buffering":
+        "no",
+
+      "Content-Encoding":
+        "identity",
+
+      Connection:
+        "keep-alive",
+    },
+  });
 }
