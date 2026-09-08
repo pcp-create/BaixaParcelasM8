@@ -4,7 +4,7 @@ import {
 } from "./types";
 
 /* ============================================================
-   CONFIGURAÇÕES
+   CONFIGURAÇÃO BASE
 ============================================================ */
 
 const baseUrl =
@@ -12,7 +12,7 @@ const baseUrl =
   "https://api.integra.m8sistemas.com.br";
 
 /* ============================================================
-   VARIÁVEL DE AMBIENTE OBRIGATÓRIA
+   VARIÁVEIS DE AMBIENTE
 ============================================================ */
 
 function requiredEnv(
@@ -31,7 +31,7 @@ function requiredEnv(
 }
 
 /* ============================================================
-   PAUSA ENTRE TENTATIVAS
+   AGUARDAR ENTRE TENTATIVAS
 ============================================================ */
 
 function sleep(
@@ -44,13 +44,13 @@ function sleep(
 }
 
 /* ============================================================
-   REQUEST GENÉRICO M8
+   REQUEST GENÉRICO
 
    - Sem cache
-   - Retry
-   - Captura status HTTP
-   - Captura corpo de erro
-   - Não imprime token
+   - Retry para consultas
+   - Log de status HTTP
+   - Não exibe token
+   - Não exibe senha
 ============================================================ */
 
 async function request<T>(
@@ -71,7 +71,16 @@ async function request<T>(
     try {
       console.log("");
       console.log(
-        `[M8 REQUEST] ${init.method || "GET"} ${url}`
+        "=========================================="
+      );
+
+      console.log(
+        `[M8 REQUEST] ${init.method || "GET"}`
+      );
+
+      console.log(
+        "[M8 REQUEST] URL:",
+        url
       );
 
       console.log(
@@ -83,9 +92,7 @@ async function request<T>(
           url,
           {
             ...init,
-
-            cache:
-              "no-store",
+            cache: "no-store",
           }
         );
 
@@ -110,12 +117,12 @@ async function request<T>(
       }
 
       console.log(
-        `[M8 RESPONSE] HTTP ${response.status} - ${tempo} ms`
+        `[M8 RESPONSE] HTTP ${response.status}`
       );
 
-      /* ======================================================
-         ERRO HTTP
-      ====================================================== */
+      console.log(
+        `[M8 RESPONSE] Tempo: ${tempo} ms`
+      );
 
       if (!response.ok) {
         const detail =
@@ -127,6 +134,10 @@ async function request<T>(
           `HTTP ${response.status}: ${detail}`
         );
       }
+
+      console.log(
+        "=========================================="
+      );
 
       return body as T;
     } catch (error) {
@@ -181,35 +192,12 @@ function authHeaders(
 
 /* ============================================================
    ETAPA 1
-   AUTENTICAR NO M8
+   AUTENTICAÇÃO M8
 ============================================================ */
 
 export async function autenticarM8(
   company: number
 ): Promise<string> {
-  console.log("");
-  console.log(
-    "=========================================="
-  );
-
-  console.log(
-    "[M8] ETAPA 1 - AUTENTICAÇÃO"
-  );
-
-  console.log(
-    "[M8] Empresa:",
-    company
-  );
-
-  console.log(
-    "[M8] Base URL:",
-    baseUrl
-  );
-
-  console.log(
-    "=========================================="
-  );
-
   const payload = {
     tenant:
       requiredEnv(
@@ -234,10 +222,47 @@ export async function autenticarM8(
       ),
   };
 
-  /*
-   * NÃO fazer console.log(payload)
-   * porque contém a senha.
-   */
+  console.log("");
+  console.log(
+    "=========================================="
+  );
+
+  console.log(
+    "[M8] ETAPA 1 - AUTENTICAÇÃO"
+  );
+
+  console.log(
+    "[M8] Base URL:",
+    baseUrl
+  );
+
+  console.log(
+    "[M8] Tenant:",
+    payload.tenant
+  );
+
+  console.log(
+    "[M8] Username:",
+    payload.username
+  );
+
+  console.log(
+    "[M8] Company:",
+    payload.company
+  );
+
+  console.log(
+    "[M8] Domain:",
+    payload.domain
+  );
+
+  console.log(
+    "[M8] Password: ********"
+  );
+
+  console.log(
+    "=========================================="
+  );
 
   const auth =
     await request<{
@@ -276,18 +301,16 @@ export async function autenticarM8(
 
   if (!token) {
     console.error(
-      "[M8] Resposta da autenticação sem token:",
-      {
-        possuiData:
-          Boolean(auth?.data),
+      "[M8] Autenticação retornou resposta sem token."
+    );
 
-        errors:
-          auth?.errors,
-      }
+    console.error(
+      "[M8] Errors:",
+      auth?.errors
     );
 
     throw new Error(
-      "O M8 não retornou data.token na autenticação."
+      "O M8 não retornou token na autenticação."
     );
   }
 
@@ -295,26 +318,31 @@ export async function autenticarM8(
     "[M8] Autenticação realizada com sucesso."
   );
 
-  /*
-   * NÃO imprimir o token.
-   */
-
   return token;
 }
 
 /* ============================================================
    ETAPA 2
-   LISTAR CONTAS A PAGAR
+   LISTAR TODAS AS CONTAS A PAGAR
 
    GET
-   /v1/financeiro/contapagar
+   /v1/financeiro/contapagar?PageSize=0&Page=0
+
+   PageSize = 0
+   Page     = 0
 ============================================================ */
 
 export async function listarContasPagar(
   token: string
 ): Promise<M8ContaPagar[]> {
+  const params =
+    new URLSearchParams({
+      PageSize: "0",
+      Page: "0",
+    });
+
   const url =
-    `${baseUrl}/v1/financeiro/contapagar`;
+    `${baseUrl}/v1/financeiro/contapagar?${params.toString()}`;
 
   console.log("");
   console.log(
@@ -322,12 +350,22 @@ export async function listarContasPagar(
   );
 
   console.log(
-    "[M8] ETAPA 2 - LISTAR CONTAS A PAGAR"
+    "[M8] ETAPA 2 - CONTAS A PAGAR"
   );
 
   console.log(
     "[M8] URL:",
     url
+  );
+
+  console.log(
+    "[M8] Query PageSize:",
+    "0"
+  );
+
+  console.log(
+    "[M8] Query Page:",
+    "0"
   );
 
   console.log(
@@ -338,13 +376,7 @@ export async function listarContasPagar(
     Date.now();
 
   const response =
-    await request<{
-      data?:
-        M8ContaPagar[];
-
-      errors?:
-        unknown[];
-    }>(
+    await request<any>(
       url,
 
       {
@@ -362,48 +394,9 @@ export async function listarContasPagar(
     Date.now() -
     inicio;
 
-  /* ==========================================================
-     VALIDAR RESPONSE.DATA
-  ========================================================== */
-
-  if (
-    !Array.isArray(
-      response?.data
-    )
-  ) {
-    console.error(
-      "[M8] O endpoint de Contas a Pagar não retornou data como array."
-    );
-
-    console.error(
-      "[M8] Estrutura recebida:",
-      {
-        possuiData:
-          response?.data !==
-          undefined,
-
-        tipoData:
-          typeof response?.data,
-
-        errors:
-          response?.errors,
-      }
-    );
-
-    return [];
-  }
-
-  const titulos =
-    response.data;
-
   console.log("");
   console.log(
-    "[M8] ETAPA 2 FINALIZADA"
-  );
-
-  console.log(
-    "[M8] Quantidade de títulos recebidos:",
-    titulos.length
+    "[M8] Resposta recebida."
   );
 
   console.log(
@@ -411,125 +404,201 @@ export async function listarContasPagar(
     `${tempo} ms`
   );
 
-  if (
-    response?.errors &&
+  console.log(
+    "[M8] Tipo da resposta:",
+    typeof response
+  );
+
+  console.log(
+    "[M8] Chaves da resposta:",
+    response &&
+    typeof response === "object"
+      ? Object.keys(response)
+      : []
+  );
+
+  console.log(
+    "[M8] response.data é array:",
     Array.isArray(
-      response.errors
+      response?.data
+    )
+  );
+
+  const titulos:
+    M8ContaPagar[] =
+    Array.isArray(
+      response?.data
+    )
+      ? response.data
+      : [];
+
+  console.log("");
+  console.log(
+    "[M8] TOTAL DE TÍTULOS RECEBIDOS:",
+    titulos.length
+  );
+
+  if (
+    Array.isArray(
+      response?.errors
     ) &&
     response.errors.length >
       0
   ) {
     console.warn(
-      "[M8] Errors retornados pelo endpoint:",
+      "[M8] Errors retornados:",
       response.errors
     );
   }
 
   /* ==========================================================
-     DIAGNÓSTICO ESPECÍFICO
-
-     TÍTULO:
-     43424
-
-     Fornecedor:
-     ELGI
+     DIAGNÓSTICO 1
+     PROCURAR TÍTULO 43424
   ========================================================== */
-
-  const titulo43424 =
-    titulos.find(
-      (titulo) =>
-        Number(
-          titulo.id
-        ) === 43424
-    );
 
   console.log("");
   console.log(
-    "========== TESTE TÍTULO 43424 =========="
+    "=========================================="
   );
+
+  console.log(
+    "[M8 TESTE] PROCURANDO TÍTULO 43424"
+  );
+
+  const titulo43424 =
+    titulos.find(
+      (titulo: any) =>
+        String(
+          titulo?.id ?? ""
+        ).trim() ===
+        "43424"
+    );
 
   if (titulo43424) {
     console.log(
-      "Título 43424: ENCONTRADO"
+      "[M8 TESTE] TÍTULO 43424: ENCONTRADO"
     );
 
     console.log(
-      "ID:",
-      titulo43424.id
-    );
-
-    console.log(
-      "Empresa:",
-      titulo43424.empresaId
-    );
-
-    console.log(
-      "Fornecedor ID:",
-      titulo43424.fornecedorId
-    );
-
-    console.log(
-      "Fornecedor:",
-      titulo43424.fornecedorNome
-    );
-
-    console.log(
-      "Documento:",
-      titulo43424.documento
-    );
-
-    console.log(
-      "Valor:",
-      titulo43424.valor
-    );
-
-    console.log(
-      "Saldo:",
-      titulo43424.saldo
+      JSON.stringify(
+        titulo43424,
+        null,
+        2
+      )
     );
   } else {
     console.log(
-      "Título 43424: NÃO ENCONTRADO"
-    );
-
-    console.log(
-      "ATENÇÃO: o título não veio dentro de response.data."
+      "[M8 TESTE] TÍTULO 43424: NÃO ENCONTRADO"
     );
   }
 
   console.log(
-    "========================================="
+    "=========================================="
   );
 
   /* ==========================================================
-     DIAGNÓSTICO PELO VALOR DA ELGI
+     DIAGNÓSTICO 2
+     PROCURAR ELGI
+  ========================================================== */
 
-     10739
+  const titulosElgi =
+    titulos.filter(
+      (titulo: any) =>
+        String(
+          titulo?.fornecedorNome ??
+          ""
+        )
+          .toUpperCase()
+          .includes(
+            "ELGI"
+          )
+    );
+
+  console.log("");
+  console.log(
+    "[M8 TESTE] TÍTULOS CONTENDO ELGI:",
+    titulosElgi.length
+  );
+
+  if (
+    titulosElgi.length >
+    0
+  ) {
+    for (
+      const titulo
+      of titulosElgi
+    ) {
+      console.log(
+        "[M8 ELGI]",
+        {
+          id:
+            titulo.id,
+
+          fornecedorId:
+            titulo.fornecedorId,
+
+          fornecedorNome:
+            titulo.fornecedorNome,
+
+          documento:
+            titulo.documento,
+
+          valor:
+            titulo.valor,
+
+          saldo:
+            titulo.saldo,
+        }
+      );
+    }
+  }
+
+  /* ==========================================================
+     DIAGNÓSTICO 3
+     PROCURAR VALOR 10739
   ========================================================== */
 
   const titulosValor10739 =
     titulos.filter(
-      (titulo) => {
+      (titulo: any) => {
         const valor =
           Number(
-            titulo.valor
+            titulo?.valor
           );
 
-        return (
+        const saldo =
+          Number(
+            titulo?.saldo
+          );
+
+        const valorOk =
           Number.isFinite(
             valor
           ) &&
           Math.abs(
             valor -
-              10739
-          ) <= 0.01
+            10739
+          ) <= 0.01;
+
+        const saldoOk =
+          Number.isFinite(
+            saldo
+          ) &&
+          Math.abs(
+            saldo -
+            10739
+          ) <= 0.01;
+
+        return (
+          valorOk ||
+          saldoOk
         );
       }
     );
 
   console.log("");
   console.log(
-    "[M8] Títulos com valor 10739:",
+    "[M8 TESTE] REGISTROS COM VALOR OU SALDO 10739:",
     titulosValor10739.length
   );
 
@@ -537,92 +606,136 @@ export async function listarContasPagar(
     titulosValor10739.length >
     0
   ) {
-    console.log(
-      "[M8] Títulos encontrados pelo valor:"
-    );
-
     for (
       const titulo
       of titulosValor10739
     ) {
-      console.log({
-        id:
-          titulo.id,
+      console.log(
+        "[M8 VALOR 10739]",
+        {
+          id:
+            titulo.id,
 
-        fornecedorId:
-          titulo.fornecedorId,
+          fornecedorNome:
+            titulo.fornecedorNome,
 
-        fornecedorNome:
-          titulo.fornecedorNome,
+          documento:
+            titulo.documento,
 
-        documento:
-          titulo.documento,
+          valor:
+            titulo.valor,
 
-        valor:
-          titulo.valor,
-
-        saldo:
-          titulo.saldo,
-      });
+          saldo:
+            titulo.saldo,
+        }
+      );
     }
   }
 
   /* ==========================================================
-     MOSTRAR PRIMEIRO E ÚLTIMO ID
-
-     Ajuda a identificar se a API pode estar
-     retornando uma faixa limitada.
+     PRIMEIROS 5
   ========================================================== */
-
-  if (
-    titulos.length >
-    0
-  ) {
-    console.log("");
-    console.log(
-      "[M8] Primeiro título recebido:",
-      {
-        id:
-          titulos[0]?.id,
-
-        fornecedor:
-          titulos[0]
-            ?.fornecedorNome,
-
-        valor:
-          titulos[0]
-            ?.valor,
-      }
-    );
-
-    console.log(
-      "[M8] Último título recebido:",
-      {
-        id:
-          titulos[
-            titulos.length -
-              1
-          ]?.id,
-
-        fornecedor:
-          titulos[
-            titulos.length -
-              1
-          ]?.fornecedorNome,
-
-        valor:
-          titulos[
-            titulos.length -
-              1
-          ]?.valor,
-      }
-    );
-  }
 
   console.log("");
   console.log(
-    "[M8] Retornando títulos para a conciliação:",
-    titulos.length
+    "[M8 TESTE] PRIMEIROS 5 TÍTULOS:"
+  );
+
+  titulos
+    .slice(
+      0,
+      5
+    )
+    .forEach(
+      (
+        titulo: any,
+        index: number
+      ) => {
+        console.log(
+          `[M8 ${index + 1}]`,
+          {
+            id:
+              titulo?.id,
+
+            fornecedorId:
+              titulo?.fornecedorId,
+
+            fornecedorNome:
+              titulo?.fornecedorNome,
+
+            documento:
+              titulo?.documento,
+
+            valor:
+              titulo?.valor,
+
+            saldo:
+              titulo?.saldo,
+          }
+        );
+      }
+    );
+
+  /* ==========================================================
+     ÚLTIMOS 5
+  ========================================================== */
+
+  console.log("");
+  console.log(
+    "[M8 TESTE] ÚLTIMOS 5 TÍTULOS:"
+  );
+
+  titulos
+    .slice(
+      -5
+    )
+    .forEach(
+      (
+        titulo: any,
+        index: number
+      ) => {
+        console.log(
+          `[M8 FIM ${index + 1}]`,
+          {
+            id:
+              titulo?.id,
+
+            fornecedorId:
+              titulo?.fornecedorId,
+
+            fornecedorNome:
+              titulo?.fornecedorNome,
+
+            documento:
+              titulo?.documento,
+
+            valor:
+              titulo?.valor,
+
+            saldo:
+              titulo?.saldo,
+          }
+        );
+      }
+    );
+
+  console.log("");
+  console.log(
+    "=========================================="
+  );
+
+  console.log(
+    "[M8] ETAPA 2 FINALIZADA"
+  );
+
+  console.log(
+    "[M8] Retornando para conciliação:",
+    titulos.length,
+    "título(s)"
+  );
+
+  console.log(
+    "=========================================="
   );
 
   return titulos;
@@ -630,7 +743,7 @@ export async function listarContasPagar(
 
 /* ============================================================
    ETAPA 3
-   LISTAR PARCELAS DE UM TÍTULO
+   LISTAR PARCELAS DO TÍTULO
 
    GET
    /v1/financeiro/contapagar/{tituloId}/parcela
@@ -642,9 +755,13 @@ export async function listarParcelas(
 ): Promise<M8Parcela[]> {
   if (
     !Number.isFinite(
-      Number(tituloId)
+      Number(
+        tituloId
+      )
     ) ||
-    Number(tituloId) <= 0
+    Number(
+      tituloId
+    ) <= 0
   ) {
     throw new Error(
       `tituloId inválido: ${tituloId}`
@@ -656,7 +773,7 @@ export async function listarParcelas(
 
   console.log("");
   console.log(
-    "------------------------------------------"
+    "=========================================="
   );
 
   console.log(
@@ -668,17 +785,15 @@ export async function listarParcelas(
     url
   );
 
+  console.log(
+    "=========================================="
+  );
+
   const inicio =
     Date.now();
 
   const response =
-    await request<{
-      data?:
-        M8Parcela[];
-
-      errors?:
-        unknown[];
-    }>(
+    await request<any>(
       url,
 
       {
@@ -696,43 +811,28 @@ export async function listarParcelas(
     Date.now() -
     inicio;
 
-  /* ==========================================================
-     VALIDAR DATA
-  ========================================================== */
+  console.log(
+    `[M8] Tempo consulta parcelas: ${tempo} ms`
+  );
 
-  if (
-    !Array.isArray(
+  console.log(
+    "[M8] response.data é array:",
+    Array.isArray(
       response?.data
     )
-  ) {
-    console.error(
-      `[M8] Título ${tituloId}: response.data não é array.`
-    );
+  );
 
-    console.error(
-      {
-        errors:
-          response?.errors,
-      }
-    );
-
-    return [];
-  }
-
-  const parcelas =
-    response.data;
+  const parcelas:
+    M8Parcela[] =
+    Array.isArray(
+      response?.data
+    )
+      ? response.data
+      : [];
 
   console.log(
     `[M8] Título ${tituloId}: ${parcelas.length} parcela(s) recebida(s).`
   );
-
-  console.log(
-    `[M8] Tempo: ${tempo} ms`
-  );
-
-  /* ==========================================================
-     MOSTRAR PARCELAS RECEBIDAS
-  ========================================================== */
 
   for (
     const parcela
@@ -775,32 +875,36 @@ export async function listarParcelas(
   }
 
   /* ==========================================================
-     DIAGNÓSTICO ESPECÍFICO DA ELGI
-
-     tituloId 43424
-     parcelaId 60130
+     TESTE ESPECÍFICO DA ELGI
   ========================================================== */
 
   if (
-    Number(tituloId) ===
-    43424
+    Number(
+      tituloId
+    ) === 43424
   ) {
-    const parcela60130 =
-      parcelas.find(
-        (parcela) =>
-          Number(
-            parcela.id
-          ) === 60130
-      );
-
     console.log("");
     console.log(
-      "========== TESTE PARCELA 60130 =========="
+      "=========================================="
     );
+
+    console.log(
+      "[M8 TESTE] PROCURANDO PARCELA 60130"
+    );
+
+    const parcela60130 =
+      parcelas.find(
+        (parcela: any) =>
+          String(
+            parcela?.id ??
+            ""
+          ).trim() ===
+          "60130"
+      );
 
     if (parcela60130) {
       console.log(
-        "Parcela 60130: ENCONTRADA"
+        "[M8 TESTE] PARCELA 60130: ENCONTRADA"
       );
 
       console.log(
@@ -812,7 +916,7 @@ export async function listarParcelas(
       );
     } else {
       console.log(
-        "Parcela 60130: NÃO ENCONTRADA"
+        "[M8 TESTE] PARCELA 60130: NÃO ENCONTRADA"
       );
     }
 
@@ -821,15 +925,11 @@ export async function listarParcelas(
     );
   }
 
-  console.log(
-    "------------------------------------------"
-  );
-
   return parcelas;
 }
 
 /* ============================================================
-   PAYLOAD DA ETAPA 4
+   PAYLOAD DA BAIXA
 ============================================================ */
 
 export interface BaixaPayload {
@@ -848,7 +948,21 @@ export interface BaixaPayload {
   valor:
     number;
 
-  chequeId:
+  /*
+   * OPCIONAL.
+   *
+   * Não devemos enviar chequeId = 0 quando a baixa
+   * não estiver relacionada a um cheque.
+   *
+   * O M8 interpreta um número informado como uma referência
+   * para financeiro_cheques.id.
+   *
+   * Portanto:
+   *
+   * - baixa sem cheque  -> propriedade não enviada
+   * - baixa com cheque  -> enviar o ID real do cheque
+   */
+  chequeId?:
     number;
 
   valorJuros:
@@ -872,12 +986,10 @@ export interface BaixaPayload {
 
 /* ============================================================
    ETAPA 4
-   BAIXAR PARCELA
+   EFETUAR BAIXA
 
    POST
-
-   /v1/financeiro/contapagar/
-   {tituloId}/baixa/parcela/{parcelaId}
+   /v1/financeiro/contapagar/{tituloId}/baixa/parcela/{parcelaId}
 ============================================================ */
 
 export async function baixarParcela(
@@ -888,9 +1000,13 @@ export async function baixarParcela(
 ) {
   if (
     !Number.isFinite(
-      Number(tituloId)
+      Number(
+        tituloId
+      )
     ) ||
-    Number(tituloId) <= 0
+    Number(
+      tituloId
+    ) <= 0
   ) {
     throw new Error(
       `tituloId inválido para baixa: ${tituloId}`
@@ -899,9 +1015,13 @@ export async function baixarParcela(
 
   if (
     !Number.isFinite(
-      Number(parcelaId)
+      Number(
+        parcelaId
+      )
     ) ||
-    Number(parcelaId) <= 0
+    Number(
+      parcelaId
+    ) <= 0
   ) {
     throw new Error(
       `parcelaId inválido para baixa: ${parcelaId}`
@@ -917,7 +1037,7 @@ export async function baixarParcela(
   );
 
   console.log(
-    "[M8] ETAPA 4 - BAIXAR PARCELA"
+    "[M8] ETAPA 4 - EFETUAR BAIXA"
   );
 
   console.log(
@@ -941,7 +1061,7 @@ export async function baixarParcela(
   );
 
   console.log(
-    "[M8] Conta Contábil:",
+    "[M8] Conta contábil:",
     payload.contaContabilId
   );
 
@@ -951,8 +1071,32 @@ export async function baixarParcela(
   );
 
   console.log(
-    "[M8] Meio Pagamento:",
+    "[M8] Meio de pagamento:",
     payload.meioPagamentoId
+  );
+
+  /*
+   * Apenas para diagnóstico.
+   * Não exibimos cheque quando ele não foi informado.
+   */
+  if (
+    payload.chequeId !==
+    undefined
+  ) {
+    console.log(
+      "[M8] Cheque:",
+      payload.chequeId
+    );
+  }
+
+  console.log(
+    "[M8] Observação interna:",
+    payload.observacaoInterna
+  );
+
+  console.log(
+    "[M8] Complemento:",
+    payload.complemento
   );
 
   console.log(
@@ -963,18 +1107,8 @@ export async function baixarParcela(
     Date.now();
 
   /*
-   * IMPORTANTE:
-   *
-   * Para baixa utilizamos somente
-   * uma tentativa.
-   *
-   * Não fazemos retry automático
-   * porque uma requisição financeira
-   * pode ter sido processada pelo M8
-   * mesmo se a resposta ao cliente
-   * tiver falhado.
-   *
-   * Isso evita risco de baixa duplicada.
+   * Sem retry automático na baixa.
+   * Evita risco de processar a mesma baixa duas vezes.
    */
   const response =
     await request<any>(
@@ -1002,8 +1136,9 @@ export async function baixarParcela(
     Date.now() -
     inicio;
 
+  console.log("");
   console.log(
-    "[M8] Baixa concluída."
+    "[M8] Baixa finalizada."
   );
 
   console.log(
