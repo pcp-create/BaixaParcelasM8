@@ -88,7 +88,7 @@ function normalizarTexto(valor: unknown): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
