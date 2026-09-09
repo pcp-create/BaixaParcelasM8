@@ -463,16 +463,12 @@ export default function MainApp() {
                 r.cliente,
                 r.documento,
                 r.dataVencimento,
-                dateBr(
-                  r.dataVencimento
-                ),
                 r.dataPagamento,
                 dateBr(
                   r.dataPagamento
                 ),
                 r.valor,
                 money(r.valor),
-                r.tipo,
                 r.tituloId,
                 r.parcelaId,
                 r.status,
@@ -524,22 +520,17 @@ export default function MainApp() {
           }
 
           if (
-            columnFilters.vencimento
+            columnFilters.vencimento &&
+            String(
+              r.dataVencimento || ""
+            )
+              .trim()
+              .toUpperCase() !==
+              columnFilters.vencimento
+                .trim()
+                .toUpperCase()
           ) {
-            const value =
-              `${r.dataVencimento} ${dateBr(
-                r.dataVencimento
-              )}`.toLowerCase();
-
-            if (
-              !value.includes(
-                columnFilters
-                  .vencimento
-                  .toLowerCase()
-              )
-            ) {
-              return false;
-            }
+            return false;
           }
 
           if (
@@ -2351,7 +2342,7 @@ export default function MainApp() {
 
                 <SortHeader
                   column="dataVencimento"
-                  label="Vencimento"
+                  label="Tipo"
                 />
 
                 <SortHeader
@@ -2432,9 +2423,8 @@ export default function MainApp() {
                 </th>
 
                 <th>
-                  <input
+                  <select
                     className="column-filter"
-                    placeholder="dd/mm/aaaa"
                     value={
                       columnFilters.vencimento
                     }
@@ -2444,7 +2434,19 @@ export default function MainApp() {
                         e.target.value
                       )
                     }
-                  />
+                  >
+                    <option value="">
+                      Todos
+                    </option>
+
+                    <option value="D">
+                      D - Débito
+                    </option>
+
+                    <option value="C">
+                      C - Crédito
+                    </option>
+                  </select>
                 </th>
 
                 <th>
@@ -2625,9 +2627,22 @@ export default function MainApp() {
                       </td>
 
                       <td>
-                        {dateBr(
-                          r.dataVencimento
-                        )}
+                        {String(
+                          r.dataVencimento || ""
+                        )
+                          .trim()
+                          .toUpperCase() ===
+                        "C"
+                          ? "C - Crédito"
+                          : String(
+                              r.dataVencimento || ""
+                            )
+                              .trim()
+                              .toUpperCase() ===
+                            "D"
+                          ? "D - Débito"
+                          : r.dataVencimento ||
+                            "—"}
                       </td>
 
                       <td>
