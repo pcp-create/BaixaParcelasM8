@@ -809,14 +809,28 @@ export default function BankConfigModal({
           Configuração M8 para baixa
         </h3>
 
+
         <div
-          className="form-grid three"
           style={{
-            alignItems:
-              "start",
+            display:
+              "flex",
+            flexDirection:
+              "column",
+            gap:
+              "18px",
           }}
         >
 
+          {/* ==================================================
+              LINHA 1 - CONTA CONTÁBIL
+          ================================================== */}
+
+          <div
+            style={{
+              width:
+                "100%",
+            }}
+          >
           {/* ==================================================
               CONTA CONTÁBIL
           ================================================== */}
@@ -870,8 +884,11 @@ export default function BankConfigModal({
                       flex:
                         1,
 
+                      minWidth:
+                        0,
+
                       padding:
-                        "8px 10px",
+                        "8px 12px",
 
                       background:
                         "#f8fbff",
@@ -908,13 +925,13 @@ export default function BankConfigModal({
                     title="Alterar conta contábil"
                     style={{
                       minWidth:
-                        "72px",
+                        "78px",
 
                       height:
                         "40px",
 
                       padding:
-                        "0 10px",
+                        "0 12px",
                     }}
                   >
                     Alterar
@@ -1188,7 +1205,24 @@ export default function BankConfigModal({
 
             <input
               type="number"
-              min="0"
+          </div>
+
+          {/* ==================================================
+              LINHA 2 - HISTÓRICO / MEIO DE PAGAMENTO
+          ================================================== */}
+
+          <div
+            style={{
+              display:
+                "grid",
+              gridTemplateColumns:
+                "repeat(2, minmax(0, 280px))",
+              gap:
+                "18px",
+              alignItems:
+                "start",
+            }}
+          >
               value={
                 draft.m8
                   .historicoId
@@ -1212,7 +1246,7 @@ export default function BankConfigModal({
           <label>
             Meio Pagamento ID
 
-            <input
+
               type="number"
               min="0"
               value={
@@ -1228,7 +1262,9 @@ export default function BankConfigModal({
                     .value
                 )
               }
-            />
+          </div>
+        </div>
+
           </label>
         </div>
 
