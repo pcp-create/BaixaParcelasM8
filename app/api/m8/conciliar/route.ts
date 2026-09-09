@@ -23,6 +23,153 @@ const TOLERANCIA_VALOR = 0.01;
 const STREAM_PADDING = " ".repeat(2048);
 
 /*
+ * Tentativas extras para consultas de leitura.
+ *
+ * A função request() de lib/m8.ts já possui retry próprio,
+ * mas aqui adicionamos uma camada de resiliência para cenários
+ * de instabilidade prolongada da API.
+ */
+const MAX_TENTATIVAS_CONSULTA = 4;
+
+const DELAYS_RETRY_MS = [
+  1000,
+  2000,
+  4000,
+];
+
+/* ============================================================
+   RETRY DE CONSULTAS M8
+============================================================ */
+
+function sleep(
+  ms: number
+): Promise<void> {
+  return new Promise(
+    (resolve) =>
+      setTimeout(
+        resolve,
+        ms
+      )
+  );
+}
+
+function extrairStatusHttp(
+  error: unknown
+): number | null {
+  const texto =
+    error instanceof Error
+      ? error.message
+      : String(
+          error ?? ""
+        );
+
+  const match =
+    /HTTP\s+(\d{3})/i.exec(
+      texto
+    );
+
+  return match
+    ? Number(
+        match[1]
+      )
+    : null;
+}
+
+function erroPodeSerTransitorio(
+  error: unknown
+): boolean {
+  const status =
+    extrairStatusHttp(
+      error
+    );
+
+  /*
+   * Sem status HTTP normalmente indica erro de rede,
+   * timeout, conexão encerrada, fetch failed etc.
+   */
+  if (
+    status == null
+  ) {
+    return true;
+  }
+
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+async function executarComRetry<T>(
+  descricao: string,
+  operacao: () => Promise<T>
+): Promise<T> {
+  let ultimoErro:
+    unknown = null;
+
+  for (
+    let tentativa = 1;
+    tentativa <=
+      MAX_TENTATIVAS_CONSULTA;
+    tentativa++
+  ) {
+    try {
+      return await operacao();
+    } catch (
+      error
+    ) {
+      ultimoErro =
+        error;
+
+      const transitorio =
+        erroPodeSerTransitorio(
+          error
+        );
+
+      console.error(
+        `[CONCILIACAO] ${descricao} - tentativa ${tentativa}/${MAX_TENTATIVAS_CONSULTA}:`,
+        error instanceof Error
+          ? error.message
+          : error
+      );
+
+      if (
+        !transitorio ||
+        tentativa >=
+          MAX_TENTATIVAS_CONSULTA
+      ) {
+        break;
+      }
+
+      const delay =
+        DELAYS_RETRY_MS[
+          Math.min(
+            tentativa - 1,
+            DELAYS_RETRY_MS.length -
+              1
+          )
+        ];
+
+      console.log(
+        `[CONCILIACAO] Nova tentativa de "${descricao}" em ${delay} ms...`
+      );
+
+      await sleep(
+        delay
+      );
+    }
+  }
+
+  throw ultimoErro instanceof
+    Error
+    ? ultimoErro
+    : new Error(
+        `Falha ao executar ${descricao}.`
+      );
+}
+
+/*
  * Palavras genéricas que não devem ser utilizadas
  * como referência para localizar fornecedor.
  *
@@ -542,7 +689,22 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const processadosIds =
+        new Set<string>();
+
       function enviar(dados: any) {
+        if (
+          dados?.type ===
+            "progress" &&
+          dados?.result?.rowId
+        ) {
+          processadosIds.add(
+            String(
+              dados.result.rowId
+            )
+          );
+        }
+
         controller.enqueue(
           encoder.encode(
             criarEvento(dados)
@@ -667,8 +829,18 @@ export async function POST(request: Request) {
           enviar({
             type: "done",
             operation: "conciliacao",
-            current: rows.length,
-            total: rows.length,
+            current:
+              processadosIds.size,
+            total:
+              rows.length,
+            processados:
+              processadosIds.size,
+            pendentes:
+              Math.max(
+                0,
+                rows.length -
+                  processadosIds.size
+              ),
             label:
               "Conciliação concluída. Os registros são créditos e não necessitam consulta ao M8.",
           });
@@ -709,7 +881,16 @@ export async function POST(request: Request) {
            CARREGAR CONTAS A PAGAR
         ==================================================== */
 
-        const todosTitulos = await listarContasPagar(token);
+        const todosTitulos =
+          await executarComRetry<
+            M8ContaPagar[]
+          >(
+            "listar Contas a Pagar",
+            () =>
+              listarContasPagar(
+                token
+              )
+          );
 
         /* ====================================================
            FILTRO LOCAL POR MODO
@@ -886,32 +1067,63 @@ export async function POST(request: Request) {
             parcela: M8Parcela;
           }> = [];
 
-          for (const titulo of titulosFornecedor) {
-            let parcelas = parcelasCache.get(titulo.id);
+          const errosConsultaParcelas:
+            string[] = [];
+
+          for (
+            const titulo
+            of titulosFornecedor
+          ) {
+            let parcelas =
+              parcelasCache.get(
+                titulo.id
+              );
 
             if (!parcelas) {
               try {
-                parcelas = await listarParcelas(
-                  token,
-                  titulo.id
-                );
+                parcelas =
+                  await executarComRetry<
+                    M8Parcela[]
+                  >(
+                    `listar parcelas do título ${titulo.id}`,
+                    () =>
+                      listarParcelas(
+                        token,
+                        titulo.id
+                      )
+                  );
 
                 parcelasCache.set(
                   titulo.id,
                   parcelas
                 );
-              } catch (error) {
+              } catch (
+                error
+              ) {
+                const detalhe =
+                  error instanceof
+                  Error
+                    ? error.message
+                    : String(
+                        error
+                      );
+
                 console.error(
-                  `[CONCILIACAO] Erro ao consultar parcelas do título ${titulo.id}:`,
-                  error
+                  `[CONCILIACAO] Falha definitiva ao consultar parcelas do título ${titulo.id}:`,
+                  detalhe
                 );
 
-                parcelas = [];
-
-                parcelasCache.set(
-                  titulo.id,
-                  []
+                /*
+                 * IMPORTANTE:
+                 * Não gravamos [] no cache em caso de erro.
+                 * Assim uma futura retomada poderá consultar
+                 * esse título novamente.
+                 */
+                errosConsultaParcelas.push(
+                  `Título ${titulo.id}: ${detalhe}`
                 );
+
+                continue;
               }
             }
 
@@ -921,12 +1133,57 @@ export async function POST(request: Request) {
                 parcelas
               );
 
-            for (const parcela of parcelasCompativeis) {
+            for (
+              const parcela
+              of parcelasCompativeis
+            ) {
               correspondencias.push({
                 titulo,
                 parcela,
               });
             }
+          }
+
+          /*
+           * Se nenhuma correspondência foi encontrada e houve
+           * falha de comunicação em uma ou mais consultas de
+           * parcelas, não podemos classificar como
+           * "não encontrado", porque o resultado seria incerto.
+           */
+          if (
+            !correspondencias.length &&
+            errosConsultaParcelas.length
+          ) {
+            enviar({
+              type:
+                "progress",
+              operation:
+                "conciliacao",
+              current:
+                atual,
+              total:
+                rows.length,
+              label:
+                row.cliente,
+
+              result: {
+                rowId:
+                  row.rowId,
+
+                status:
+                  "erro",
+
+                statusMensagem:
+                  "Não foi possível concluir a consulta das parcelas após as tentativas automáticas. Tente retomar a conciliação.",
+
+                apiError:
+                  errosConsultaParcelas.join(
+                    " | "
+                  ),
+              },
+            });
+
+            continue;
           }
 
           /* ==================================================
@@ -1134,17 +1391,35 @@ export async function POST(request: Request) {
            FINAL
         ==================================================== */
 
+        const pendentes =
+          Math.max(
+            0,
+            rows.length -
+              processadosIds.size
+          );
+
         enviar({
           type: "done",
           operation: "conciliacao",
-          current: rows.length,
-          total: rows.length,
-          label: "Conciliação concluída.",
+          current:
+            processadosIds.size,
+          total:
+            rows.length,
+          processados:
+            processadosIds.size,
+          pendentes,
+          label:
+            pendentes === 0
+              ? "Conciliação concluída."
+              : `Processamento encerrado com ${pendentes} registro(s) pendente(s).`,
         });
       } catch (error) {
         enviar({
           type: "error",
           operation: "conciliacao",
+
+          processados:
+            processadosIds.size,
 
           error:
             error instanceof Error

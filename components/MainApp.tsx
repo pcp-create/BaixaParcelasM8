@@ -25,6 +25,16 @@ import BankConfigModal from "./BankConfigModal";
 const STORAGE_KEY =
   "conciliacao-m8-bancos-v1";
 
+/*
+ * Quantidade máxima de retomadas automáticas após a
+ * tentativa inicial de conciliação.
+ */
+const MAX_RETOMADAS_CONCILIACAO =
+  3;
+
+const DELAY_RETOMADA_MS =
+  1500;
+
 /* ============================================================
    TIPOS
 ============================================================ */
@@ -943,11 +953,36 @@ export default function MainApp() {
     operation:
       | "conciliacao"
       | "baixa"
-  ) {
+  ): Promise<{
+    results:
+      Array<
+        Partial<
+          NormalizedCsvRow
+        > & {
+          rowId:
+            string;
+        }
+      >;
+
+    doneReceived:
+      boolean;
+
+    error:
+      string | null;
+
+    serverPending:
+      number | null;
+  }> {
     if (!response.body) {
-      throw new Error(
-        "O navegador não recebeu o fluxo de processamento."
-      );
+      return {
+        results: [],
+        doneReceived:
+          false,
+        error:
+          "O navegador não recebeu o fluxo de processamento.",
+        serverPending:
+          null,
+      };
     }
 
     const reader =
@@ -957,6 +992,28 @@ export default function MainApp() {
       new TextDecoder();
 
     let buffer = "";
+
+    const results =
+      new Map<
+        string,
+        Partial<
+          NormalizedCsvRow
+        > & {
+          rowId:
+            string;
+        }
+      >();
+
+    let doneReceived =
+      false;
+
+    let streamError:
+      string | null =
+      null;
+
+    let serverPending:
+      number | null =
+      null;
 
     function processEvent(
       event: any
@@ -1004,17 +1061,32 @@ export default function MainApp() {
             event.label || "",
         });
 
-        if (event.result) {
+        if (
+          event.result?.rowId
+        ) {
+          const result = {
+            ...event.result,
+            rowId:
+              String(
+                event.result
+                  .rowId
+              ),
+          };
+
+          results.set(
+            result.rowId,
+            result
+          );
+
           setRows(
             (old) =>
               old.map(
                 (r) =>
                   r.rowId ===
-                  event.result
-                    .rowId
+                  result.rowId
                     ? {
                         ...r,
-                        ...event.result,
+                        ...result,
                       }
                     : r
               )
@@ -1028,22 +1100,48 @@ export default function MainApp() {
         event.type ===
         "error"
       ) {
-        throw new Error(
+        streamError =
           event.error ||
-            "Erro durante o processamento."
-        );
+          "Erro durante o processamento.";
+
+        if (
+          event.pendentes !=
+          null
+        ) {
+          serverPending =
+            Number(
+              event.pendentes
+            );
+        }
+
+        return;
       }
 
       if (
         event.type ===
         "done"
       ) {
+        doneReceived =
+          true;
+
+        if (
+          event.pendentes !=
+          null
+        ) {
+          serverPending =
+            Number(
+              event.pendentes
+            );
+        }
+
         setProgress({
           active: true,
           type: operation,
           current:
             Number(
-              event.total ?? 0
+              event.current ??
+              event.total ??
+              0
             ),
           total:
             Number(
@@ -1056,59 +1154,109 @@ export default function MainApp() {
       }
     }
 
-    while (true) {
-      const {
-        value,
-        done,
-      } =
-        await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer +=
-        decoder.decode(
+    try {
+      while (true) {
+        const {
           value,
-          {
-            stream: true,
-          }
-        );
+          done,
+        } =
+          await reader.read();
 
-      const linhas =
-        buffer.split("\n");
-
-      buffer =
-        linhas.pop() || "";
-
-      for (
-        const linha
-        of linhas
-      ) {
-        const texto =
-          linha.trim();
-
-        if (!texto) {
-          continue;
+        if (done) {
+          break;
         }
 
-        const event =
-          JSON.parse(texto);
+        buffer +=
+          decoder.decode(
+            value,
+            {
+              stream: true,
+            }
+          );
 
-        processEvent(event);
+        const linhas =
+          buffer.split(
+            "\n"
+          );
+
+        buffer =
+          linhas.pop() ||
+          "";
+
+        for (
+          const linha
+          of linhas
+        ) {
+          const texto =
+            linha.trim();
+
+          if (!texto) {
+            continue;
+          }
+
+          try {
+            processEvent(
+              JSON.parse(
+                texto
+              )
+            );
+          } catch (
+            error
+          ) {
+            streamError =
+              error instanceof
+              Error
+                ? error.message
+                : "Erro ao interpretar retorno do servidor.";
+          }
+        }
       }
+
+      const restante =
+        buffer.trim();
+
+      if (
+        restante
+      ) {
+        try {
+          processEvent(
+            JSON.parse(
+              restante
+            )
+          );
+        } catch (
+          error
+        ) {
+          streamError =
+            error instanceof
+            Error
+              ? error.message
+              : "Erro ao interpretar o último retorno do servidor.";
+        }
+      }
+    } catch (
+      error
+    ) {
+      streamError =
+        error instanceof
+        Error
+          ? error.message
+          : "A conexão com o processamento foi interrompida.";
     }
 
-    const restante =
-      buffer.trim();
+    return {
+      results:
+        Array.from(
+          results.values()
+        ),
 
-    if (restante) {
-      processEvent(
-        JSON.parse(
-          restante
-        )
-      );
-    }
+      doneReceived,
+
+      error:
+        streamError,
+
+      serverPending,
+    };
   }
 
   /* ==========================================================
@@ -1130,74 +1278,31 @@ export default function MainApp() {
       );
     }
 
-    setBusy(true);
-
-    setMessage(
-      modoConciliacao ===
-        "pendentes"
-        ? "Iniciando conciliação somente dos títulos pendentes..."
-        : "Iniciando verificação completa de todos os títulos..."
-    );
-
-    setRows(
-      (old) =>
-        old.map(
-          (r) => {
-            /*
-             * Créditos permanecem identificados como crédito
-             * e não entram visualmente em "Conciliando".
-             */
-            if (
-              ehCredito(
-                r.tipo
-              )
-            ) {
-              return {
-                ...r,
-
-                status:
-                  "credito",
-
-                statusMensagem:
-                  "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
-
-                tituloId:
-                  undefined,
-
-                parcelaId:
-                  undefined,
-
-                tituloM8:
-                  undefined,
-
-                parcelaM8:
-                  undefined,
-
-                baixaM8:
-                  undefined,
-
-                fornecedorNome:
-                  undefined,
-
-                parcelaValor:
-                  undefined,
-
-                parcelaSaldo:
-                  undefined,
-
-                apiError:
-                  undefined,
-              };
-            }
-
+    /*
+     * Montamos uma cópia local do lote.
+     *
+     * Isso evita depender da atualização assíncrona do
+     * setRows() para descobrir quais registros ainda estão
+     * pendentes durante as retomadas automáticas.
+     */
+    let workingRows =
+      rows.map(
+        (
+          r
+        ): NormalizedCsvRow => {
+          if (
+            ehCredito(
+              r.tipo
+            )
+          ) {
             return {
               ...r,
 
               status:
-                "conciliando",
+                "credito",
 
               statusMensagem:
-                "Aguardando processamento...",
+                "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
 
               tituloId:
                 undefined,
@@ -1227,7 +1332,52 @@ export default function MainApp() {
                 undefined,
             };
           }
-        )
+
+          return {
+            ...r,
+
+            status:
+              "conciliando",
+
+            statusMensagem:
+              "Aguardando processamento...",
+
+            tituloId:
+              undefined,
+
+            parcelaId:
+              undefined,
+
+            tituloM8:
+              undefined,
+
+            parcelaM8:
+              undefined,
+
+            baixaM8:
+              undefined,
+
+            fornecedorNome:
+              undefined,
+
+            parcelaValor:
+              undefined,
+
+            parcelaSaldo:
+              undefined,
+
+            apiError:
+              undefined,
+          };
+        }
+      );
+
+    setRows(
+      workingRows
+    );
+
+    setBusy(
+      true
     );
 
     setProgress({
@@ -1236,82 +1386,302 @@ export default function MainApp() {
         "conciliacao",
       current: 0,
       total:
-        rows.length,
+        workingRows.length,
       label:
         "Preparando conciliação...",
     });
 
+    setMessage(
+      modoConciliacao ===
+        "pendentes"
+        ? "Iniciando conciliação somente dos títulos pendentes..."
+        : "Iniciando verificação completa de todos os títulos..."
+    );
+
+    let ultimaFalha =
+      "";
+
+    let retomadas =
+      0;
+
     try {
-      const response =
-        await fetch(
-          "/api/m8/conciliar",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                company,
-                rows,
-                modoConciliacao,
-              }),
-          }
-        );
-
-      if (!response.ok) {
-        let errorText = "";
-
-        try {
-          errorText =
-            await response.text();
-        } catch {}
-
-        throw new Error(
-          errorText ||
-            `Erro HTTP ${response.status}`
-        );
-      }
-
-      await processStream(
-        response,
-        "conciliacao"
-      );
-
-      setMessage(
-        modoConciliacao ===
-          "pendentes"
-          ? "Conciliação dos títulos pendentes concluída. Se algum registro não foi encontrado e você suspeita que já tenha sido processado, selecione “Verificar todos os títulos” e concilie novamente."
-          : "Verificação completa concluída. Revise os registros antes de efetuar a baixa."
-      );
-    } catch (err) {
-      setMessage(
-        err instanceof Error
-          ? err.message
-          : "Erro na conciliação."
-      );
-
-      setRows(
-        (old) =>
-          old.map(
+      while (
+        true
+      ) {
+        const pendentes =
+          workingRows.filter(
             (r) =>
               r.status ===
               "conciliando"
-                ? {
-                    ...r,
-                    status:
-                      "erro",
-                    statusMensagem:
-                      "Conciliação interrompida.",
-                  }
-                : r
-          )
-      );
+          );
+
+        /*
+         * Nenhuma linha pode continuar como "Conciliando"
+         * quando declaramos sucesso.
+         */
+        if (
+          !pendentes.length
+        ) {
+          const totalErros =
+            workingRows.filter(
+              (r) =>
+                r.status ===
+                "erro"
+            ).length;
+
+          setMessage(
+            totalErros > 0
+              ? `Conciliação finalizada com ${totalErros} registro(s) em erro. Nenhum registro permaneceu como “Conciliando”. Revise os erros e execute a conciliação novamente se desejar tentar esses itens.`
+              : modoConciliacao ===
+                  "pendentes"
+                ? "Conciliação dos títulos pendentes concluída. Todos os registros foram processados."
+                : "Verificação completa concluída. Todos os registros foram processados. Revise os registros antes de efetuar a baixa."
+          );
+
+          break;
+        }
+
+        if (
+          retomadas >
+          MAX_RETOMADAS_CONCILIACAO
+        ) {
+          const idsPendentes =
+            new Set(
+              pendentes.map(
+                (r) =>
+                  r.rowId
+              )
+            );
+
+          workingRows =
+            workingRows.map(
+              (r) =>
+                idsPendentes.has(
+                  r.rowId
+                )
+                  ? {
+                      ...r,
+
+                      status:
+                        "erro",
+
+                      statusMensagem:
+                        `Conciliação interrompida após ${MAX_RETOMADAS_CONCILIACAO} retomada(s) automática(s). Execute a conciliação novamente para tentar estes registros.`,
+
+                      apiError:
+                        ultimaFalha ||
+                        "Não foi possível concluir o processamento após as tentativas automáticas.",
+                    }
+                  : r
+            );
+
+          setRows(
+            workingRows
+          );
+
+          setMessage(
+            `A conciliação não foi concluída integralmente. ${pendentes.length} registro(s) permaneceram pendentes após ${MAX_RETOMADAS_CONCILIACAO} retomada(s) automática(s). Eles foram marcados como Erro para não permanecerem indefinidamente como “Conciliando”.`
+          );
+
+          break;
+        }
+
+        const numeroTentativa =
+          retomadas + 1;
+
+        if (
+          retomadas >
+          0
+        ) {
+          setMessage(
+            `A comunicação foi interrompida antes da conclusão. Retomando automaticamente ${pendentes.length} registro(s) pendente(s) — retomada ${retomadas}/${MAX_RETOMADAS_CONCILIACAO}...`
+          );
+
+          setProgress({
+            active: true,
+            type:
+              "conciliacao",
+            current: 0,
+            total:
+              pendentes.length,
+            label:
+              `Retomando ${pendentes.length} registro(s) pendente(s)...`,
+          });
+
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                DELAY_RETOMADA_MS
+              )
+          );
+        }
+
+        let response:
+          Response;
+
+        try {
+          response =
+            await fetch(
+              "/api/m8/conciliar",
+              {
+                method:
+                  "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body:
+                  JSON.stringify({
+                    company,
+
+                    /*
+                     * Enviamos somente os registros que ainda
+                     * estão pendentes nesta tentativa.
+                     */
+                    rows:
+                      pendentes,
+
+                    modoConciliacao,
+                  }),
+              }
+            );
+        } catch (
+          error
+        ) {
+          ultimaFalha =
+            error instanceof
+            Error
+              ? error.message
+              : "Falha de conexão ao iniciar a conciliação.";
+
+          retomadas++;
+
+          continue;
+        }
+
+        if (
+          !response.ok
+        ) {
+          let errorText =
+            "";
+
+          try {
+            errorText =
+              await response.text();
+          } catch {}
+
+          ultimaFalha =
+            errorText ||
+            `Erro HTTP ${response.status}`;
+
+          retomadas++;
+
+          continue;
+        }
+
+        const streamResult =
+          await processStream(
+            response,
+            "conciliacao"
+          );
+
+        /*
+         * Replica localmente os mesmos resultados que já foram
+         * aplicados visualmente pelo processStream().
+         */
+        if (
+          streamResult.results
+            .length
+        ) {
+          const resultados =
+            new Map(
+              streamResult.results.map(
+                (result) => [
+                  result.rowId,
+                  result,
+                ]
+              )
+            );
+
+          workingRows =
+            workingRows.map(
+              (r) => {
+                const result =
+                  resultados.get(
+                    r.rowId
+                  );
+
+                return result
+                  ? {
+                      ...r,
+                      ...result,
+                    }
+                  : r;
+              }
+            );
+
+          setRows(
+            workingRows
+          );
+        }
+
+        const aindaPendentes =
+          workingRows.filter(
+            (r) =>
+              r.status ===
+              "conciliando"
+          );
+
+        /*
+         * SUCESSO REAL:
+         * - o stream precisa ter terminado;
+         * - nenhuma linha pode permanecer "Conciliando".
+         */
+        if (
+          streamResult.doneReceived &&
+          !streamResult.error &&
+          !aindaPendentes.length
+        ) {
+          const totalErros =
+            workingRows.filter(
+              (r) =>
+                r.status ===
+                "erro"
+            ).length;
+
+          setMessage(
+            totalErros > 0
+              ? `Conciliação finalizada com ${totalErros} registro(s) em erro. Nenhum registro permaneceu como “Conciliando”. Revise os erros e execute a conciliação novamente se desejar tentar esses itens.`
+              : modoConciliacao ===
+                  "pendentes"
+                ? "Conciliação dos títulos pendentes concluída. Todos os registros foram processados."
+                : "Verificação completa concluída. Todos os registros foram processados. Revise os registros antes de efetuar a baixa."
+          );
+
+          break;
+        }
+
+        ultimaFalha =
+          streamResult.error ||
+          (
+            !streamResult.doneReceived
+              ? "O fluxo de conciliação foi encerrado antes de receber a confirmação final."
+              : `${aindaPendentes.length} registro(s) não receberam resultado final.`
+          );
+
+        /*
+         * Somente as linhas que ainda estão como "Conciliando"
+         * serão reenviadas na próxima iteração.
+         */
+        retomadas++;
+      }
     } finally {
-      setBusy(false);
+      setBusy(
+        false
+      );
 
       setTimeout(
         () => {
