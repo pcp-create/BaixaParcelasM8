@@ -435,19 +435,46 @@ function encontrarParcelasCompativeis(
   parcelas: M8Parcela[]
 ): M8Parcela[] {
   return parcelas.filter((parcela) => {
-    const valorOk = mesmoValor(parcela.valor, row.valor);
+    /*
+     * O fornecedor / favorecido já foi validado
+     * anteriormente na seleção do título candidato,
+     * utilizando:
+     *
+     * fornecedorNome
+     * OU
+     * complemento
+     *
+     * Portanto, aqui não voltamos a exigir que
+     * parcela.pessoaNome seja igual ao cliente do CSV.
+     *
+     * Isso é necessário para casos em que o pagamento
+     * ocorre para securitizadora, banco, intermediador,
+     * boleto registrado etc.
+     */
 
-    const dataM8 = normalizarData(parcela.vencimento);
-    const dataCsv = normalizarData(row.dataPagamento);
+    const valorOk =
+      mesmoValor(
+        parcela.valor,
+        row.valor
+      );
 
-    const dataOk = dataM8 === dataCsv;
+    const dataM8 =
+      normalizarData(
+        parcela.vencimento
+      );
 
-    const clienteOk = clienteCompativelFornecedor(
-      row.cliente,
-      parcela.pessoaNome
+    const dataCsv =
+      normalizarData(
+        row.dataPagamento
+      );
+
+    const dataOk =
+      dataM8 === dataCsv;
+
+    return (
+      valorOk &&
+      dataOk
     );
-
-    return valorOk && dataOk && clienteOk;
   });
 }
 
@@ -758,8 +785,8 @@ export async function POST(request: Request) {
 
                 statusMensagem:
                   modoConciliacao === "pendentes"
-                    ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento + Cliente. Caso já tenha sido processada, tente “Verificar todos os títulos”.`
-                    : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento + Cliente.`,
+                    ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento. Caso já tenha sido processada, tente “Verificar todos os títulos”.`
+                    : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento.`,
               },
             });
 
@@ -784,7 +811,7 @@ export async function POST(request: Request) {
                 status: "conflito",
 
                 statusMensagem:
-                  `${correspondencias.length} parcelas correspondem a Valor + Data de Pagamento + Cliente. Necessária revisão manual.`,
+                  `${correspondencias.length} parcelas correspondem a Valor + Data de Pagamento dentro dos títulos compatíveis. Necessária revisão manual.`,
               },
             });
 
