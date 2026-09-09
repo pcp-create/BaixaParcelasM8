@@ -36,6 +36,9 @@ const labels:
   parcialmente_baixada:
     "Baixa parcial",
 
+  credito:
+    "Crédito",
+
   nao_encontrado:
     "Não encontrado",
 
@@ -57,9 +60,34 @@ export default function StatusBadge({
     labels[status] ||
     status;
 
+  /*
+   * Mantemos a classe padrão do projeto.
+   *
+   * Para "credito", adicionamos também uma aparência
+   * própria inline, evitando a necessidade de alterar
+   * o globals.css agora.
+   */
+  const creditStyle =
+    status ===
+    "credito"
+      ? {
+          background:
+            "#e8f4ff",
+
+          border:
+            "1px solid #9bc8ef",
+
+          color:
+            "#1769aa",
+        }
+      : undefined;
+
   return (
     <span
       className={`status status-${status}`}
+      style={
+        creditStyle
+      }
     >
       {label}
     </span>

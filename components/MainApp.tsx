@@ -148,6 +148,23 @@ function dateBr(v: string) {
 }
 
 /* ============================================================
+   TIPO DO MOVIMENTO
+
+   C = Crédito
+   D = Débito
+============================================================ */
+
+function ehCredito(
+  tipo: unknown
+): boolean {
+  return (
+    String(tipo ?? "")
+      .trim()
+      .toUpperCase() === "C"
+  );
+}
+
+/* ============================================================
    COMPONENTE
 ============================================================ */
 
@@ -455,6 +472,7 @@ export default function MainApp() {
                 ),
                 r.valor,
                 money(r.valor),
+                r.tipo,
                 r.tituloId,
                 r.parcelaId,
                 r.status,
@@ -1133,42 +1151,91 @@ export default function MainApp() {
     setRows(
       (old) =>
         old.map(
-          (r) => ({
-            ...r,
+          (r) => {
+            /*
+             * Créditos permanecem identificados como crédito
+             * e não entram visualmente em "Conciliando".
+             */
+            if (
+              ehCredito(
+                r.tipo
+              )
+            ) {
+              return {
+                ...r,
 
-            status:
-              "conciliando",
+                status:
+                  "credito",
 
-            statusMensagem:
-              "Aguardando processamento...",
+                statusMensagem:
+                  "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
 
-            tituloId:
-              undefined,
+                tituloId:
+                  undefined,
 
-            parcelaId:
-              undefined,
+                parcelaId:
+                  undefined,
 
-            tituloM8:
-              undefined,
+                tituloM8:
+                  undefined,
 
-            parcelaM8:
-              undefined,
+                parcelaM8:
+                  undefined,
 
-            baixaM8:
-              undefined,
+                baixaM8:
+                  undefined,
 
-            fornecedorNome:
-              undefined,
+                fornecedorNome:
+                  undefined,
 
-            parcelaValor:
-              undefined,
+                parcelaValor:
+                  undefined,
 
-            parcelaSaldo:
-              undefined,
+                parcelaSaldo:
+                  undefined,
 
-            apiError:
-              undefined,
-          })
+                apiError:
+                  undefined,
+              };
+            }
+
+            return {
+              ...r,
+
+              status:
+                "conciliando",
+
+              statusMensagem:
+                "Aguardando processamento...",
+
+              tituloId:
+                undefined,
+
+              parcelaId:
+                undefined,
+
+              tituloM8:
+                undefined,
+
+              parcelaM8:
+                undefined,
+
+              baixaM8:
+                undefined,
+
+              fornecedorNome:
+                undefined,
+
+              parcelaValor:
+                undefined,
+
+              parcelaSaldo:
+                undefined,
+
+              apiError:
+                undefined,
+            };
+          }
         )
     );
 
@@ -1278,7 +1345,10 @@ export default function MainApp() {
       rows.filter(
         (r) =>
           r.status ===
-          "pronto"
+            "pronto" &&
+          !ehCredito(
+            r.tipo
+          )
       );
 
     if (!aptas.length) {
@@ -2480,6 +2550,10 @@ export default function MainApp() {
 
                     <option value="ja_baixada">
                       Já baixada no M8
+                    </option>
+
+                    <option value="credito">
+                      Crédito
                     </option>
 
                     <option value="parcialmente_baixada">
