@@ -531,16 +531,28 @@ export default function BankConfigModal({
     value:
       string
   ) =>
-    setDraft({
-      ...draft,
+    setDraft(
+      (
+        atual
+      ) => {
+        if (
+          !atual
+        ) {
+          return atual;
+        }
 
-      mapping: {
-        ...draft.mapping,
+        return {
+          ...atual,
 
-        [key]:
-          value,
-      },
-    });
+          mapping: {
+            ...atual.mapping,
+
+            [key]:
+              value,
+          },
+        };
+      }
+    );
 
   /* ==========================================================
      ATUALIZAR CONFIGURAÇÃO M8
@@ -555,26 +567,38 @@ export default function BankConfigModal({
     value:
       string
   ) =>
-    setDraft({
-      ...draft,
+    setDraft(
+      (
+        atual
+      ) => {
+        if (
+          !atual
+        ) {
+          return atual;
+        }
 
-      m8: {
-        ...draft.m8,
+        return {
+          ...atual,
 
-        [key]:
-          [
-            "contaContabilId",
-            "historicoId",
-            "meioPagamentoId",
-          ].includes(
-            key
-          )
-            ? Number(
-                value
+          m8: {
+            ...atual.m8,
+
+            [key]:
+              [
+                "contaContabilId",
+                "historicoId",
+                "meioPagamentoId",
+              ].includes(
+                key
               )
-            : value,
-      },
-    });
+                ? Number(
+                    value
+                  )
+                : value,
+          },
+        };
+      }
+    );
 
   /* ==========================================================
      SELECIONAR CONTA
@@ -584,18 +608,30 @@ export default function BankConfigModal({
     conta:
       ContaContabil
   ) {
-    setDraft({
-      ...draft,
+    setDraft(
+      (
+        atual
+      ) => {
+        if (
+          !atual
+        ) {
+          return atual;
+        }
 
-      m8: {
-        ...draft.m8,
+        return {
+          ...atual,
 
-        contaContabilId:
-          Number(
-            conta.id
-          ),
-      },
-    });
+          m8: {
+            ...atual.m8,
+
+            contaContabilId:
+              Number(
+                conta.id
+              ),
+          },
+        };
+      }
+    );
 
     setPesquisaConta(
       ""
@@ -611,16 +647,28 @@ export default function BankConfigModal({
   ========================================================== */
 
   function limparConta() {
-    setDraft({
-      ...draft,
+    setDraft(
+      (
+        atual
+      ) => {
+        if (
+          !atual
+        ) {
+          return atual;
+        }
 
-      m8: {
-        ...draft.m8,
+        return {
+          ...atual,
 
-        contaContabilId:
-          0,
-      },
-    });
+          m8: {
+            ...atual.m8,
+
+            contaContabilId:
+              0,
+          },
+        };
+      }
+    );
 
     setPesquisaConta(
       ""
