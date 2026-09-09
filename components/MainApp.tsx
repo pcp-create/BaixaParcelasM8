@@ -2755,6 +2755,7 @@ export default function MainApp() {
         open={showConfig}
         bank={bank}
         headers={headers}
+        company={company}
         onClose={() =>
           setShowConfig(false)
         }
