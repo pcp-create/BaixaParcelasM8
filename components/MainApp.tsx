@@ -148,6 +148,23 @@ function dateBr(v: string) {
 }
 
 /* ============================================================
+   TIPO DO MOVIMENTO
+
+   C = Crédito
+   D = Débito
+============================================================ */
+
+function ehCredito(
+  tipo: unknown
+): boolean {
+  return (
+    String(tipo ?? "")
+      .trim()
+      .toUpperCase() === "C"
+  );
+}
+
+/* ============================================================
    COMPONENTE
 ============================================================ */
 
@@ -446,9 +463,6 @@ export default function MainApp() {
                 r.cliente,
                 r.documento,
                 r.dataVencimento,
-                dateBr(
-                  r.dataVencimento
-                ),
                 r.dataPagamento,
                 dateBr(
                   r.dataPagamento
@@ -506,22 +520,17 @@ export default function MainApp() {
           }
 
           if (
-            columnFilters.vencimento
+            columnFilters.vencimento &&
+            String(
+              r.dataVencimento || ""
+            )
+              .trim()
+              .toUpperCase() !==
+              columnFilters.vencimento
+                .trim()
+                .toUpperCase()
           ) {
-            const value =
-              `${r.dataVencimento} ${dateBr(
-                r.dataVencimento
-              )}`.toLowerCase();
-
-            if (
-              !value.includes(
-                columnFilters
-                  .vencimento
-                  .toLowerCase()
-              )
-            ) {
-              return false;
-            }
+            return false;
           }
 
           if (
@@ -1133,42 +1142,91 @@ export default function MainApp() {
     setRows(
       (old) =>
         old.map(
-          (r) => ({
-            ...r,
+          (r) => {
+            /*
+             * Créditos permanecem identificados como crédito
+             * e não entram visualmente em "Conciliando".
+             */
+            if (
+              ehCredito(
+                r.tipo
+              )
+            ) {
+              return {
+                ...r,
 
-            status:
-              "conciliando",
+                status:
+                  "credito",
 
-            statusMensagem:
-              "Aguardando processamento...",
+                statusMensagem:
+                  "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
 
-            tituloId:
-              undefined,
+                tituloId:
+                  undefined,
 
-            parcelaId:
-              undefined,
+                parcelaId:
+                  undefined,
 
-            tituloM8:
-              undefined,
+                tituloM8:
+                  undefined,
 
-            parcelaM8:
-              undefined,
+                parcelaM8:
+                  undefined,
 
-            baixaM8:
-              undefined,
+                baixaM8:
+                  undefined,
 
-            fornecedorNome:
-              undefined,
+                fornecedorNome:
+                  undefined,
 
-            parcelaValor:
-              undefined,
+                parcelaValor:
+                  undefined,
 
-            parcelaSaldo:
-              undefined,
+                parcelaSaldo:
+                  undefined,
 
-            apiError:
-              undefined,
-          })
+                apiError:
+                  undefined,
+              };
+            }
+
+            return {
+              ...r,
+
+              status:
+                "conciliando",
+
+              statusMensagem:
+                "Aguardando processamento...",
+
+              tituloId:
+                undefined,
+
+              parcelaId:
+                undefined,
+
+              tituloM8:
+                undefined,
+
+              parcelaM8:
+                undefined,
+
+              baixaM8:
+                undefined,
+
+              fornecedorNome:
+                undefined,
+
+              parcelaValor:
+                undefined,
+
+              parcelaSaldo:
+                undefined,
+
+              apiError:
+                undefined,
+            };
+          }
         )
     );
 
@@ -1278,7 +1336,10 @@ export default function MainApp() {
       rows.filter(
         (r) =>
           r.status ===
-          "pronto"
+            "pronto" &&
+          !ehCredito(
+            r.tipo
+          )
       );
 
     if (!aptas.length) {
@@ -2281,7 +2342,7 @@ export default function MainApp() {
 
                 <SortHeader
                   column="dataVencimento"
-                  label="Vencimento"
+                  label="Tipo"
                 />
 
                 <SortHeader
@@ -2362,9 +2423,8 @@ export default function MainApp() {
                 </th>
 
                 <th>
-                  <input
+                  <select
                     className="column-filter"
-                    placeholder="dd/mm/aaaa"
                     value={
                       columnFilters.vencimento
                     }
@@ -2374,7 +2434,19 @@ export default function MainApp() {
                         e.target.value
                       )
                     }
-                  />
+                  >
+                    <option value="">
+                      Todos
+                    </option>
+
+                    <option value="D">
+                      D - Débito
+                    </option>
+
+                    <option value="C">
+                      C - Crédito
+                    </option>
+                  </select>
                 </th>
 
                 <th>
@@ -2482,6 +2554,10 @@ export default function MainApp() {
                       Já baixada no M8
                     </option>
 
+                    <option value="credito">
+                      Crédito
+                    </option>
+
                     <option value="parcialmente_baixada">
                       Baixa parcial
                     </option>
@@ -2551,9 +2627,22 @@ export default function MainApp() {
                       </td>
 
                       <td>
-                        {dateBr(
-                          r.dataVencimento
-                        )}
+                        {String(
+                          r.dataVencimento || ""
+                        )
+                          .trim()
+                          .toUpperCase() ===
+                        "C"
+                          ? "C - Crédito"
+                          : String(
+                              r.dataVencimento || ""
+                            )
+                              .trim()
+                              .toUpperCase() ===
+                            "D"
+                          ? "D - Débito"
+                          : r.dataVencimento ||
+                            "—"}
                       </td>
 
                       <td>

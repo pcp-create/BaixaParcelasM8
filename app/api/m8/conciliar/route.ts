@@ -80,6 +80,23 @@ type ModoConciliacao =
   | "todos";
 
 /* ============================================================
+   TIPO DE MOVIMENTO DO EXTRATO
+
+   C = Crédito  -> não concilia e não baixa
+   D = Débito   -> fluxo normal de Contas a Pagar
+============================================================ */
+
+function ehCredito(
+  row: NormalizedCsvRow
+): boolean {
+  return (
+    String(row.tipo ?? "")
+      .trim()
+      .toUpperCase() === "C"
+  );
+}
+
+/* ============================================================
    NORMALIZAR TEXTO
 ============================================================ */
 
@@ -572,6 +589,94 @@ export async function POST(request: Request) {
         }
 
         /* ====================================================
+           SOMENTE CRÉDITOS
+
+           Se o arquivo possuir apenas movimentos C, não há
+           necessidade de autenticar nem consultar o M8.
+        ==================================================== */
+
+        const possuiDebito =
+          rows.some(
+            (row) =>
+              !ehCredito(row)
+          );
+
+        if (!possuiDebito) {
+          enviar({
+            type: "start",
+            operation: "conciliacao",
+            current: 0,
+            total: rows.length,
+            label:
+              "Arquivo contém somente créditos. Nenhuma consulta ao M8 será necessária.",
+          });
+
+          for (
+            let index = 0;
+            index < rows.length;
+            index++
+          ) {
+            const row =
+              rows[index];
+
+            enviar({
+              type: "progress",
+              operation: "conciliacao",
+              current: index + 1,
+              total: rows.length,
+              label:
+                row.cliente ||
+                `linha ${row.numeroLinha}`,
+
+              result: {
+                rowId: row.rowId,
+                status: "credito",
+                statusMensagem:
+                  "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
+
+                tituloId:
+                  undefined,
+
+                parcelaId:
+                  undefined,
+
+                tituloM8:
+                  undefined,
+
+                parcelaM8:
+                  undefined,
+
+                baixaM8:
+                  undefined,
+
+                fornecedorNome:
+                  undefined,
+
+                parcelaValor:
+                  undefined,
+
+                parcelaSaldo:
+                  undefined,
+
+                apiError:
+                  undefined,
+              },
+            });
+          }
+
+          enviar({
+            type: "done",
+            operation: "conciliacao",
+            current: rows.length,
+            total: rows.length,
+            label:
+              "Conciliação concluída. Os registros são créditos e não necessitam consulta ao M8.",
+          });
+
+          return;
+        }
+
+        /* ====================================================
            INÍCIO
         ==================================================== */
 
@@ -659,6 +764,64 @@ export async function POST(request: Request) {
           const row = rows[index];
 
           const atual = index + 1;
+
+          /* ==================================================
+             CRÉDITO DO EXTRATO
+
+             C não participa da conciliação de Contas a Pagar.
+             Não procura título e não consulta parcelas.
+          ================================================== */
+
+          if (ehCredito(row)) {
+            enviar({
+              type: "progress",
+              operation: "conciliacao",
+              current: atual,
+              total: rows.length,
+              label:
+                row.cliente ||
+                `linha ${row.numeroLinha}`,
+
+              result: {
+                rowId: row.rowId,
+
+                status:
+                  "credito",
+
+                statusMensagem:
+                  "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar.",
+
+                tituloId:
+                  undefined,
+
+                parcelaId:
+                  undefined,
+
+                tituloM8:
+                  undefined,
+
+                parcelaM8:
+                  undefined,
+
+                baixaM8:
+                  undefined,
+
+                fornecedorNome:
+                  undefined,
+
+                parcelaValor:
+                  undefined,
+
+                parcelaSaldo:
+                  undefined,
+
+                apiError:
+                  undefined,
+              },
+            });
+
+            continue;
+          }
 
           enviar({
             type: "status",

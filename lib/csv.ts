@@ -1,4 +1,7 @@
-import { BankConfig, NormalizedCsvRow } from "./types";
+import {
+  BankConfig,
+  NormalizedCsvRow,
+} from "./types";
 
 /* ============================================================
    DIVIDIR LINHA DO CSV
@@ -11,14 +14,23 @@ function splitCsvLine(
   const result: string[] = [];
 
   let current = "";
+
   let quoted = false;
 
-  for (let i = 0; i < line.length; i++) {
+  for (
+    let i = 0;
+    i < line.length;
+    i++
+  ) {
     const ch = line[i];
 
     if (ch === '"') {
-      if (quoted && line[i + 1] === '"') {
+      if (
+        quoted &&
+        line[i + 1] === '"'
+      ) {
         current += '"';
+
         i++;
       } else {
         quoted = !quoted;
@@ -27,14 +39,19 @@ function splitCsvLine(
       ch === delimiter &&
       !quoted
     ) {
-      result.push(current.trim());
+      result.push(
+        current.trim()
+      );
+
       current = "";
     } else {
       current += ch;
     }
   }
 
-  result.push(current.trim());
+  result.push(
+    current.trim()
+  );
 
   return result;
 }
@@ -43,11 +60,14 @@ function splitCsvLine(
    DETECTAR DELIMITADOR
 ============================================================ */
 
-function detectDelimiter(text: string): string {
+function detectDelimiter(
+  text: string
+): string {
   const firstLine =
     text
       .replace(/^\uFEFF/, "")
-      .split(/\r?\n/)[0] || "";
+      .split(/\r?\n/)[0] ||
+    "";
 
   const candidates = [
     ";",
@@ -56,15 +76,27 @@ function detectDelimiter(text: string): string {
   ];
 
   let melhor = ";";
+
   let maiorQuantidade = 0;
 
-  for (const candidate of candidates) {
+  for (
+    const candidate
+    of candidates
+  ) {
     const quantidade =
-      firstLine.split(candidate).length;
+      firstLine
+        .split(candidate)
+        .length;
 
-    if (quantidade > maiorQuantidade) {
-      maiorQuantidade = quantidade;
-      melhor = candidate;
+    if (
+      quantidade >
+      maiorQuantidade
+    ) {
+      maiorQuantidade =
+        quantidade;
+
+      melhor =
+        candidate;
     }
   }
 
@@ -72,30 +104,115 @@ function detectDelimiter(text: string): string {
 }
 
 /* ============================================================
+   NORMALIZAR NOME DE CABEÇALHO
+
+   Usado somente para localizar automaticamente a coluna Tipo.
+
+   Exemplos:
+   Tipo
+   TIPO
+   tipo
+
+   Todos são tratados como:
+   TIPO
+============================================================ */
+
+function normalizarCabecalho(
+  value: unknown
+): string {
+  return String(
+    value ?? ""
+  )
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      ""
+    )
+    .trim()
+    .toUpperCase();
+}
+
+/* ============================================================
+   LOCALIZAR COLUNA TIPO
+
+   A coluna "Tipo" não precisa ser configurada no cadastro
+   do banco. O sistema procura automaticamente por ela.
+
+   C = Crédito
+   D = Débito
+============================================================ */
+
+function obterTipoMovimento(
+  values: Record<string, string>
+): string {
+  const chaveTipo =
+    Object.keys(
+      values
+    ).find(
+      (key) =>
+        normalizarCabecalho(
+          key
+        ) === "TIPO"
+    );
+
+  if (!chaveTipo) {
+    return "";
+  }
+
+  return String(
+    values[chaveTipo] ??
+    ""
+  )
+    .trim()
+    .toUpperCase();
+}
+
+/* ============================================================
    PARSE DO CSV
 ============================================================ */
 
-export function parseCsv(text: string) {
-  const clean = text
-    .replace(/^\uFEFF/, "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
+export function parseCsv(
+  text: string
+) {
+  const clean =
+    text
+      .replace(
+        /^\uFEFF/,
+        ""
+      )
+      .replace(
+        /\r\n/g,
+        "\n"
+      )
+      .replace(
+        /\r/g,
+        "\n"
+      );
 
-  const lines = clean
-    .split("\n")
-    .filter(
-      (line) =>
-        line.trim().length > 0
-    );
+  const lines =
+    clean
+      .split("\n")
+      .filter(
+        (line) =>
+          line
+            .trim()
+            .length >
+          0
+      );
 
-  if (lines.length < 2) {
+  if (
+    lines.length <
+    2
+  ) {
     throw new Error(
       "O CSV não possui registros suficientes."
     );
   }
 
   const delimiter =
-    detectDelimiter(clean);
+    detectDelimiter(
+      clean
+    );
 
   const headers =
     splitCsvLine(
@@ -108,7 +225,8 @@ export function parseCsv(text: string) {
 
   if (
     headers.some(
-      (header) => !header
+      (header) =>
+        !header
     )
   ) {
     throw new Error(
@@ -120,7 +238,10 @@ export function parseCsv(text: string) {
     lines
       .slice(1)
       .map(
-        (line, idx) => {
+        (
+          line,
+          idx
+        ) => {
           const values =
             splitCsvLine(
               line,
@@ -128,13 +249,20 @@ export function parseCsv(text: string) {
             );
 
           const obj:
-            Record<string, string> =
-            {};
+            Record<
+              string,
+              string
+            > = {};
 
           headers.forEach(
-            (header, col) => {
+            (
+              header,
+              col
+            ) => {
               obj[header] =
-                values[col]?.trim() ??
+                values[
+                  col
+                ]?.trim() ??
                 "";
             }
           );
@@ -161,23 +289,32 @@ export function parseCsv(text: string) {
 
    Exemplos:
 
-   "10.739,00"  -> 10739
-   "2.650,05"   -> 2650.05
-   "525"        -> 525
+   "10.739,00"   -> 10739
+   "2.650,05"    -> 2650.05
+   "525"         -> 525
    "R$ 1.000,00" -> 1000
 ============================================================ */
 
 export function parseCurrency(
   value: string
 ): number | null {
-  if (!value?.trim()) {
+  if (
+    !value?.trim()
+  ) {
     return null;
   }
 
-  let clean = value
-    .trim()
-    .replace(/R\$/gi, "")
-    .replace(/\s/g, "");
+  let clean =
+    value
+      .trim()
+      .replace(
+        /R\$/gi,
+        ""
+      )
+      .replace(
+        /\s/g,
+        ""
+      );
 
   /*
    * Formato brasileiro:
@@ -187,25 +324,39 @@ export function parseCurrency(
    * remove ponto de milhar
    * troca vírgula por ponto decimal
    */
-  if (clean.includes(",")) {
-    clean = clean
-      .replace(/\./g, "")
-      .replace(",", ".");
+  if (
+    clean.includes(",")
+  ) {
+    clean =
+      clean
+        .replace(
+          /\./g,
+          ""
+        )
+        .replace(
+          ",",
+          "."
+        );
   }
 
   /*
    * Remove qualquer caractere
    * que não faça parte do número.
    */
-  clean = clean.replace(
-    /[^0-9.-]/g,
-    ""
-  );
+  clean =
+    clean.replace(
+      /[^0-9.-]/g,
+      ""
+    );
 
   const numero =
-    Number(clean);
+    Number(
+      clean
+    );
 
-  return Number.isFinite(numero)
+  return Number.isFinite(
+    numero
+  )
     ? numero
     : null;
 }
@@ -222,7 +373,9 @@ export function parseBrDateToIso(
   value: string
 ): string {
   const v =
-    String(value ?? "").trim();
+    String(
+      value ?? ""
+    ).trim();
 
   if (!v) {
     return "";
@@ -238,10 +391,16 @@ export function parseBrDateToIso(
 
   if (br) {
     const dia =
-      br[1].padStart(2, "0");
+      br[1].padStart(
+        2,
+        "0"
+      );
 
     const mes =
-      br[2].padStart(2, "0");
+      br[2].padStart(
+        2,
+        "0"
+      );
 
     const ano =
       br[3];
@@ -270,12 +429,26 @@ export function parseBrDateToIso(
 
    Converte qualquer layout bancário para
    nosso padrão interno.
+
+   REGRA DO TIPO:
+
+   D = Débito
+       segue para conciliação normalmente.
+
+   C = Crédito
+       é importado e exibido, porém já recebe status
+       "credito" e não precisa procurar título/parcela.
 ============================================================ */
 
 export function normalizeRows(
   parsedRows: Array<{
     numeroLinha: number;
-    values: Record<string, string>;
+
+    values:
+      Record<
+        string,
+        string
+      >;
   }>,
 
   bank: BankConfig
@@ -286,6 +459,7 @@ export function normalizeRows(
         numeroLinha,
         values,
       },
+
       idx
     ) => {
       /* ------------------------------------------------------
@@ -319,12 +493,22 @@ export function normalizeRows(
           bank.mapping.valor
         ] ?? "";
 
+      /*
+       * A coluna Tipo é identificada automaticamente
+       * pelo próprio nome do cabeçalho.
+       */
+      const tipo =
+        obterTipoMovimento(
+          values
+        );
+
       /* ------------------------------------------------------
          NORMALIZAR
       ------------------------------------------------------ */
 
       const cliente =
-        clienteOriginal.trim();
+        clienteOriginal
+          .trim();
 
       const dataPagamento =
         parseBrDateToIso(
@@ -337,12 +521,16 @@ export function normalizeRows(
         );
 
       const documento =
-        documentoOriginal.trim();
+        documentoOriginal
+          .trim();
 
       const valor =
         parseCurrency(
           valorOriginal
         );
+
+      const credito =
+        tipo === "C";
 
       /* ------------------------------------------------------
          DEBUG
@@ -359,14 +547,19 @@ export function normalizeRows(
 
           mapeamento: {
             cliente:
-              bank.mapping.cliente,
+              bank.mapping
+                .cliente,
 
             dataPagamento:
               bank.mapping
                 .dataPagamento,
 
             valor:
-              bank.mapping.valor,
+              bank.mapping
+                .valor,
+
+            tipo:
+              "Tipo (automático)",
           },
 
           original: {
@@ -378,12 +571,20 @@ export function normalizeRows(
 
             valor:
               valorOriginal,
+
+            tipo,
           },
 
           normalizado: {
             cliente,
+
             dataPagamento,
+
             valor,
+
+            tipo,
+
+            credito,
           },
         }
       );
@@ -396,7 +597,10 @@ export function normalizeRows(
         rowId:
           `${Date.now()}-${idx}-${Math.random()
             .toString(36)
-            .slice(2, 8)}`,
+            .slice(
+              2,
+              8
+            )}`,
 
         numeroLinha,
 
@@ -413,11 +617,17 @@ export function normalizeRows(
 
         valor,
 
+        tipo,
+
         status:
-          "aguardando",
+          credito
+            ? "credito"
+            : "aguardando",
 
         statusMensagem:
-          "Aguardando conciliação",
+          credito
+            ? "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar."
+            : "Aguardando conciliação",
       };
     }
   );

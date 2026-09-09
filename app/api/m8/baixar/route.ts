@@ -19,6 +19,23 @@ import {
 const STREAM_PADDING = " ".repeat(2048);
 
 /* ============================================================
+   TIPO DE MOVIMENTO DO EXTRATO
+
+   C = Crédito  -> nunca deve ser baixado no Contas a Pagar
+   D = Débito   -> fluxo normal
+============================================================ */
+
+function ehCredito(
+  row: NormalizedCsvRow
+): boolean {
+  return (
+    String(row.tipo ?? "")
+      .trim()
+      .toUpperCase() === "C"
+  );
+}
+
+/* ============================================================
    CRIAR EVENTO DO STREAM
 ============================================================ */
 
@@ -290,6 +307,104 @@ export async function POST(
             );
           }
 
+          /* ==================================================
+             SOMENTE CRÉDITOS
+
+             Proteção de backend:
+             se por algum motivo forem enviados somente créditos,
+             não autentica, não valida configuração e não chama
+             o endpoint de baixa do M8.
+          ================================================== */
+
+          const possuiDebito =
+            rows.some(
+              (row) =>
+                !ehCredito(row)
+            );
+
+          if (!possuiDebito) {
+            enviar({
+              type:
+                "start",
+
+              operation:
+                "baixa",
+
+              current: 0,
+
+              total:
+                rows.length,
+
+              label:
+                "Nenhuma baixa necessária. Os registros recebidos são créditos.",
+            });
+
+            for (
+              let index = 0;
+              index < rows.length;
+              index++
+            ) {
+              const row =
+                rows[index];
+
+              enviar({
+                type:
+                  "progress",
+
+                operation:
+                  "baixa",
+
+                current:
+                  index + 1,
+
+                total:
+                  rows.length,
+
+                label:
+                  "Crédito ignorado para baixa.",
+
+                result: {
+                  rowId:
+                    row.rowId,
+
+                  status:
+                    "credito",
+
+                  statusMensagem:
+                    "Crédito do extrato. Não é permitida baixa no Contas a Pagar.",
+
+                  tituloId:
+                    undefined,
+
+                  parcelaId:
+                    undefined,
+
+                  apiError:
+                    undefined,
+                },
+              });
+            }
+
+            enviar({
+              type:
+                "done",
+
+              operation:
+                "baixa",
+
+              current:
+                rows.length,
+
+              total:
+                rows.length,
+
+              label:
+                "Processamento concluído. Nenhum crédito foi enviado para baixa.",
+            });
+
+            return;
+          }
+
           if (!config) {
             throw new Error(
               "Configuração do banco não informada."
@@ -419,6 +534,55 @@ export async function POST(
 
             const atual =
               index + 1;
+
+            /* =================================================
+               CRÉDITO DO EXTRATO
+
+               Segunda proteção: mesmo que um crédito seja
+               enviado ao endpoint por engano, ele nunca chama
+               baixarParcela().
+            ================================================= */
+
+            if (ehCredito(row)) {
+              enviar({
+                type:
+                  "progress",
+
+                operation:
+                  "baixa",
+
+                current:
+                  atual,
+
+                total:
+                  rows.length,
+
+                label:
+                  "Crédito ignorado para baixa.",
+
+                result: {
+                  rowId:
+                    row.rowId,
+
+                  status:
+                    "credito",
+
+                  statusMensagem:
+                    "Crédito do extrato. Não é permitida baixa no Contas a Pagar.",
+
+                  tituloId:
+                    undefined,
+
+                  parcelaId:
+                    undefined,
+
+                  apiError:
+                    undefined,
+                },
+              });
+
+              continue;
+            }
 
             /* =================================================
                STATUS ATUAL

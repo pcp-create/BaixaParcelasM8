@@ -6,6 +6,7 @@ export type IntegrationStatus =
   | "baixada"
   | "ja_baixada"
   | "parcialmente_baixada"
+  | "credito"
   | "nao_encontrado"
   | "conflito"
   | "erro";
@@ -74,6 +75,17 @@ export interface NormalizedCsvRow {
   documento: string;
 
   valor: number | null;
+
+  /*
+   * Tipo do movimento bancário:
+   *
+   * D = Débito
+   * C = Crédito
+   *
+   * A coluna é identificada automaticamente pelo nome "Tipo"
+   * no CSV, sem necessidade de configuração do banco.
+   */
+  tipo: string;
 
   status: IntegrationStatus;
 
