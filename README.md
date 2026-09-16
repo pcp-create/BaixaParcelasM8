@@ -98,9 +98,19 @@ Antes de baixar, preencha:
 
 O sistema bloqueia a ETAPA 4 enquanto os três IDs obrigatórios estiverem zerados.
 
+## Juros por item
+
+A coluna **Valor juros (R$)**, entre **Valor do extrato** e **Título M8**, permite informar os juros já incluídos no extrato. O padrão é zero; valores negativos e mais de duas casas decimais não são aceitos.
+
+A conciliação compara **Valor do extrato − Valor juros = Valor da parcela M8**. Exemplo: extrato de R$ 105,00 e juros de R$ 5,00 correspondem a um principal de R$ 100,00. O principal precisa ser maior que zero.
+
+Ao encontrar uma correspondência, os juros ficam travados, inclusive durante a revisão por proximidade de datas. Para corrigir juros de uma linha conciliada, importe o extrato novamente. Créditos e parcelas já baixadas não permitem edição.
+
+Na baixa, o POST envia **valor = principal** e **valorJuros = juros informados**. No exemplo, `valor: 100` e `valorJuros: 5`. O backend confere os juros confirmados na conciliação e a correspondência do principal com a parcela antes de enviar a baixa. O valor original do extrato e sua data de pagamento são preservados.
+
 ## Regra de conciliação
 
-Os títulos candidatos continuam sendo localizados pelo fornecedor ou complemento. As parcelas precisam ter o mesmo valor do extrato, com tolerância de R$ 0,01. Para as datas:
+Os títulos candidatos continuam sendo localizados pelo fornecedor ou complemento. As parcelas precisam ter o mesmo valor de **Valor do extrato − Valor juros**, com tolerância de R$ 0,01. Para as datas:
 
 1. Vencimento e pagamento iguais: correspondência exata.
 2. Vencimento em sábado, domingo ou feriado cadastrado: aceita o pagamento no próximo dia útil.

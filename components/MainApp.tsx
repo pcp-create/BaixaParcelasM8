@@ -19,6 +19,9 @@ import {
   parseCsv,
 } from "@/lib/csv";
 
+import AdjustmentInput from "./AdjustmentInput";
+import { amountForMatching, applyAdjustment } from "@/lib/amount-adjustment";
+
 import StatusBadge from "./StatusBadge";
 import BankConfigModal from "./BankConfigModal";
 
@@ -48,6 +51,7 @@ type SortKey =
   | "tipo"
   | "dataPagamento"
   | "valor"
+  | "valorJuros"
   | "tituloId"
   | "parcelaId"
   | "status"
@@ -694,6 +698,7 @@ export default function MainApp() {
             [
               "numeroLinha",
               "valor",
+              "valorJuros",
               "tituloId",
               "parcelaId",
             ].includes(
@@ -1160,6 +1165,11 @@ export default function MainApp() {
       return setMessage(
         "Configure a coluna Valor do banco."
       );
+    }
+
+    if (rows.some((row) => !ehCredito(row.tipo) && amountForMatching(row) === null)) {
+      setMessage("Confira os juros: informe um valor não negativo com até 2 casas decimais e menor que o valor do extrato.");
+      return;
     }
 
     /*
@@ -2382,6 +2392,8 @@ export default function MainApp() {
                   className="right"
                 />
 
+                <SortHeader column="valorJuros" label="Valor juros (R$)" className="right" />
+
                 <SortHeader
                   column="tituloId"
                   label="Título M8"
@@ -2507,6 +2519,7 @@ export default function MainApp() {
                   />
                 </th>
 
+                <th><span className="filter-placeholder">Juros inclusos</span></th>
                 <th>
                   <input
                     className="column-filter"
@@ -2620,7 +2633,7 @@ export default function MainApp() {
 
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="empty"
                   >
                     {rows.length ===
@@ -2684,6 +2697,13 @@ export default function MainApp() {
                         )}
                       </td>
 
+                      <td className="right">
+                        <AdjustmentInput value={r.valorJuros} rowNumber={r.numeroLinha}
+                          disabled={busy || r.jurosConfirmados !== undefined || ["baixada", "ja_baixada", "credito"].includes(r.status) || ehCredito(r.tipo)}
+                          onChange={(difference) => setRows((current) => current.map((row) => row.rowId === r.rowId ? applyAdjustment(row, difference) : row))}
+                        />
+                        <small className="account-id-note">Principal: {amountForMatching(r) === null ? "Valor inválido" : money(amountForMatching(r))}</small>
+                      </td>
                       <td>
 
                         {r.tituloId &&
@@ -2808,7 +2828,7 @@ export default function MainApp() {
               <div><dt>Fornecedor no M8</dt><dd>{dateReviewRow.fornecedorNome || "—"}</dd></div>
               <div><dt>Título / Parcela M8</dt><dd>{dateReviewRow.tituloId} / {dateReviewRow.parcelaId}</dd></div>
               <div><dt>Documento no extrato / M8</dt><dd>{dateReviewRow.documento || "—"} / {String(dateReviewRow.tituloM8?.documento || "—")}</dd></div>
-              <div><dt>Valor do extrato / Parcela</dt><dd>{money(dateReviewRow.valor)} / {money(dateReviewRow.parcelaValor)}</dd></div>
+              <div><dt>Extrato − Juros / Parcela</dt><dd>{money(dateReviewRow.valor)} − {money(dateReviewRow.valorJuros ?? 0)} = {money(amountForMatching(dateReviewRow))} / {money(dateReviewRow.parcelaValor)}</dd></div>
               <div><dt>Vencimento M8 / Pagamento</dt><dd>{dateBr(dateReviewRow.correspondenciaData?.vencimento || "")} / {dateBr(dateReviewRow.dataPagamento)}</dd></div>
             </dl>
             <p>{dateReviewRow.correspondenciaData?.motivo}</p>

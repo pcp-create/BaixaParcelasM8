@@ -13,6 +13,7 @@ function load(relative, mocks = {}) {
   m._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {compilerOptions:{ module:ts.ModuleKind.CommonJS, esModuleInterop:true, target:ts.ScriptTarget.ES2020 }}).outputText, filename);
   return m.exports;
 }
+const adjustments = load('lib/amount-adjustment.ts');
 const dates = load('lib/matching-dates.ts');
 const empty = { recurring: [], dates: [] };
 const match = (due, paid, calendar = empty, days = 5) => dates.matchDates(due, paid, calendar, days);
@@ -51,6 +52,7 @@ const baseRow = { rowId: 'row-1', numeroLinha: 2, cliente: 'FORNECEDOR EXEMPLO',
 async function reconcile(parcels, row = baseRow, options = {}) {
   const route = load('app/api/m8/conciliar/route.ts', {
     '@/lib/matching-dates': dates,
+    '@/lib/amount-adjustment': adjustments,
     '@/lib/m8': {
       autenticarM8: async () => 'mock',
       listarContasPagar: async () => options.titles ?? [{id:1, fornecedorNome:'FORNECEDOR EXEMPLO', saldo:100}],
@@ -86,7 +88,7 @@ test('API preserva baixa parcial e já baixada e não libera consulta incompleta
   assert.equal((await reconcile([parcel('2026-09-17')],baseRow,{titles:[{id:1,fornecedorNome:'FORNECEDOR EXEMPLO',saldo:100},{id:2,fornecedorNome:'FORNECEDOR EXEMPLO',saldo:100}],failId:2})).status,'erro');
 });
 function reviewedRow() {
-  const row = {...baseRow, status:'pronto', tituloId:1, parcelaId:11, parcelaM8:parcel('2026-09-15')};
+  const row = {...baseRow, status:'pronto', valorJuros:0, jurosConfirmados:0, tituloId:1, parcelaId:11, parcelaM8:parcel('2026-09-15')};
   row.revisaoData = {aprovadaEm:'2026-09-18T12:00:00Z',company:1,bankId:'sicredi',tituloId:1,parcelaId:11,vencimento:'2026-09-15',pagamento:row.dataPagamento,valor:100};
   return row;
 }
@@ -99,7 +101,7 @@ test('aprovação fica vinculada aos dados e não vale em outro contexto', () =>
 });
 test('API de baixa bloqueia proximidade sem aprovação antes de autenticar', async () => {
   let authenticated = 0;
-  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/m8':{autenticarM8:async()=>{authenticated++;throw new Error('Não deve autenticar');},baixarParcela:async()=>{throw new Error('Não deve baixar');}}});
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{autenticarM8:async()=>{authenticated++;throw new Error('Não deve autenticar');},baixarParcela:async()=>{throw new Error('Não deve baixar');}}});
   const row={...reviewedRow(),revisaoData:undefined};
   const response=await route.POST(new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows:[row],config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4}})}));
   assert.match(await response.text(),/correspondência não aprovada/);
@@ -108,7 +110,7 @@ test('API de baixa bloqueia proximidade sem aprovação antes de autenticar', as
 
 test('baixa aprovada usa a data real do pagamento e mantém ID e valor', async () => {
   const calls=[];
-  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/m8':{
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
     autenticarM8:async()=> 'mock',
     baixarParcela:async(...args)=>{calls.push(args);return {ok:true};},
   }});
@@ -120,4 +122,49 @@ test('baixa aprovada usa a data real do pagamento e mantém ID e valor', async (
   assert.equal(calls[0][2],11);
   assert.equal(calls[0][3].data,'2026-09-17T12:00:00.000Z');
   assert.equal(calls[0][3].valor,100);
+});
+
+test('juros são subtraídos do extrato para localizar o principal', async () => {
+  for (const [valor, valorJuros] of [[105,5],[120,20],[100,0]]) {
+    const row = {...baseRow, valor, valorJuros};
+    const result = await reconcile([parcel('2026-09-17')],row);
+    assert.equal(result.status,'pronto');
+    assert.equal(result.parcelaValor,100);
+    assert.equal(row.valor,valor);
+  }
+  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,valor:105,valorJuros:0})).status,'nao_encontrado');
+});
+test('juros aceitam vírgula, rejeitam negativos e ficam travados após conciliação', () => {
+  assert.equal(adjustments.parseAdjustment('5,25'),5.25);
+  assert.equal(adjustments.parseAdjustment('5.25'),5.25);
+  assert.equal(adjustments.parseAdjustment(''),0);
+  for(const input of ['-5', '-', 'abc','1,234','Infinity']) assert.equal(adjustments.parseAdjustment(input),null);
+  assert.equal(adjustments.amountForMatching({valor:0.3,valorJuros:0.2}),0.1);
+  for(const juros of [-1,10,11,null,0.001]) assert.equal(adjustments.amountForMatching({valor:10,valorJuros:juros}),null);
+  const row = reviewedRow();
+  assert.equal(adjustments.applyAdjustment(row,5),row);
+  const edited = adjustments.applyAdjustment({...baseRow},5);
+  assert.equal(edited.valorJuros,5);
+  assert.equal(edited.valor,100);
+});
+
+test('baixa envia principal e juros separados e bloqueia juros modificados', async () => {
+  const calls=[];
+  let authentications=0;
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
+    autenticarM8:async()=>{authentications++;return 'mock';},
+    baixarParcela:async(...args)=>{calls.push(args);return {ok:true};},
+  }});
+  const result = await reconcile([parcel('2026-09-17')],{...baseRow,valor:105,valorJuros:5});
+  assert.equal(result.jurosConfirmados,5);
+  const row={...baseRow,valor:105,valorJuros:5,...result};
+  const request=(r)=>new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows:[r],config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4,observacaoInterna:'',complemento:''}})});
+  assert.match(await (await route.POST(request(row))).text(),/"status":"baixada"/);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0][3].valor,100);
+  assert.equal(calls[0][3].valorJuros,5);
+  assert.equal(calls[0][3].valor + calls[0][3].valorJuros,105);
+  assert.match(await (await route.POST(request({...row,valorJuros:4}))).text(),/juros ou valor principal alterados/);
+  assert.equal(calls.length,1);
+  assert.equal(authentications,1);
 });

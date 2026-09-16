@@ -544,6 +544,7 @@ export function normalizeRows(
         documento,
 
         valor,
+        valorJuros: 0,
 
         tipo,
 

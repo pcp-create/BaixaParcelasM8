@@ -1,3 +1,4 @@
+import { amountForMatching } from "@/lib/amount-adjustment";
 import { calendarForCompany, toleranceForBank, matchDates, Calendar, DateMatch } from "@/lib/matching-dates";
 import {
   autenticarM8,
@@ -619,11 +620,8 @@ function encontrarParcelasCompativeis(
      * boleto registrado etc.
      */
 
-    const valorOk =
-      mesmoValor(
-        parcela.valor,
-        row.valor
-      );
+    const adjustedAmount = amountForMatching(row);
+    const valorOk = adjustedAmount !== null && mesmoValor(parcela.valor, adjustedAmount);
 
     const dataM8 =
       normalizarData(
@@ -1264,6 +1262,7 @@ export async function POST(request: Request) {
               result: {
                 rowId: row.rowId,
                 correspondenciaData: match.data,
+                jurosConfirmados: row.valorJuros ?? 0,
 
                 status: "ja_baixada",
 
@@ -1309,6 +1308,7 @@ export async function POST(request: Request) {
               result: {
                 rowId: row.rowId,
                 correspondenciaData: match.data,
+                jurosConfirmados: row.valorJuros ?? 0,
 
                 status:
                   "parcialmente_baixada",
@@ -1362,6 +1362,7 @@ export async function POST(request: Request) {
 
               status: match.data.tipo === "proximidade" ? "revisar" : "pronto",
               correspondenciaData: match.data,
+                jurosConfirmados: row.valorJuros ?? 0,
               statusMensagem: match.data.tipo === "proximidade"
                 ? match.data.motivo
                 : `Título e parcela encontrados. ${match.data.motivo} Parcela disponível para baixa.`,

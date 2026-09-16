@@ -1,3 +1,4 @@
+import { amountForMatching } from "@/lib/amount-adjustment";
 import { calendarForCompany, toleranceForBank, matchDates, validDateReview } from "@/lib/matching-dates";
 import {
   autenticarM8,
@@ -284,6 +285,11 @@ export async function POST(
           if (Array.isArray(rows)) {
             for (const row of rows) {
               if (ehCredito(row)) continue;
+              const principal = amountForMatching(row);
+              if (principal === null || row.jurosConfirmados !== (row.valorJuros ?? 0) ||
+                  Math.abs(principal - normalizarValor(row.parcelaM8?.valor)) > 0.0100001) {
+                throw new Error(`Linha ${row.numeroLinha}: juros ou valor principal alterados após a conciliação. Importe e concilie novamente.`);
+              }
               const dateMatch = matchDates(row.parcelaM8?.vencimento, row.dataPagamento, calendarForCompany(company), toleranceForBank(bankId));
               if (row.status !== "pronto" || !dateMatch ||
                   (dateMatch.tipo === "proximidade" && !validDateReview(row, company, bankId))) {
@@ -664,10 +670,8 @@ export async function POST(
                  VALIDAR VALOR
               =============================================== */
 
-              const valor =
-                normalizarValor(
-                  row.valor
-                );
+              const valor = amountForMatching(row)!;
+              const valorJuros = row.valorJuros ?? 0;
 
               if (
                 !Number.isFinite(
@@ -762,11 +766,10 @@ export async function POST(
                 valor,
 
                 /*
-                 * Mantemos os campos financeiros zerados
-                 * quando não há juros, multa ou desconto.
+                 * Juros informados e confirmados na conciliação.
+                 * Multa e desconto continuam zerados.
                  */
-                valorJuros:
-                  0,
+                valorJuros,
 
                 valorMulta:
                   0,

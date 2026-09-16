@@ -87,6 +87,8 @@ export interface NormalizedCsvRow {
   documento: string;
 
   valor: number | null;
+  valorJuros?: number | null;
+  jurosConfirmados?: number;
 
   /*
    * Tipo do movimento bancário:

@@ -1635,3 +1635,6 @@ th.right .sort-header span:first-child {
 }
 
 .status-revisar { background: #fff7df; color: #805400; border: 1px solid #e8cd85; }
+
+.adjustment-input { min-width: 100px; max-width: 140px; text-align: right; }
+.adjustment-input[aria-invalid="true"] { border-color: #b42318; }
