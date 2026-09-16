@@ -214,17 +214,6 @@ export function parseCsv(
         header.trim()
     );
 
-  if (
-    headers.some(
-      (header) =>
-        !header
-    )
-  ) {
-    throw new Error(
-      "O CSV possui cabeçalho vazio."
-    );
-  }
-
   const rows =
     lines
       .slice(1)
