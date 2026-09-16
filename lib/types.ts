@@ -8,6 +8,7 @@ export type IntegrationStatus =
   | "parcialmente_baixada"
   | "credito"
   | "nao_encontrado"
+  | "revisar"
   | "conflito"
   | "erro";
 
@@ -22,12 +23,14 @@ export type CanonicalField =
    CONFIGURAÇÃO DE MAPEAMENTO DO BANCO
 ============================================================ */
 
+/** Colunas numéricas começam em 1; strings identificam cabeçalhos. */
 export interface BankMapping {
-  cliente: string;
-  dataVencimento: string;
-  dataPagamento: string;
-  documento: string;
-  valor: string;
+  cliente: string | number;
+  dataVencimento: string | number;
+  dataPagamento: string | number;
+  documento: string | number;
+  valor: string | number;
+  tipo?: string | number;
 }
 
 /* ============================================================
@@ -36,6 +39,8 @@ export interface BankMapping {
 
 export interface BankM8Config {
   contaContabilId: number;
+  contaContabilNome?: string;
+  contaContabilCodigo?: string;
   historicoId: number;
   meioPagamentoId: number;
   observacaoInterna: string;
@@ -49,6 +54,13 @@ export interface BankM8Config {
 export interface BankConfig {
   id: string;
   nome: string;
+
+  /** Primeira linha de dados no arquivo, contando a partir de 1. */
+  linhaInicio: number;
+  formato?: string;
+  detectarInicioPorData?: boolean;
+  tipoPeloSinal?: boolean;
+  toleranciaDiasConciliacao?: number;
 
   mapping: BankMapping;
 
@@ -82,14 +94,22 @@ export interface NormalizedCsvRow {
    * D = Débito
    * C = Crédito
    *
-   * A coluna é identificada automaticamente pelo nome "Tipo"
-   * no CSV, sem necessidade de configuração do banco.
+   * A coluna é definida no layout do banco; layouts antigos
+   * podem usar a detecção pelo cabeçalho "Tipo".
    */
   tipo: string;
 
   status: IntegrationStatus;
 
   statusMensagem: string;
+  correspondenciaData?: {
+    tipo: "exata" | "dia_util" | "proximidade";
+    vencimento: string;
+    pagamento: string;
+    dias: number;
+    motivo: string;
+  };
+  revisaoData?: { aprovadaEm: string; company: number; bankId: string; tituloId: number; parcelaId: number; vencimento: string; pagamento: string; valor: number };
 
   tituloId?: number;
 

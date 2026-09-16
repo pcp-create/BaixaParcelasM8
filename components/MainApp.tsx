@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 
-import defaultBanks from "@/data/bancos.json";
+import { BANK_M8_STORAGE_KEY, loadBanks, serializeM8 } from "@/lib/banks";
 
 import {
   BankConfig,
@@ -22,8 +22,6 @@ import {
 import StatusBadge from "./StatusBadge";
 import BankConfigModal from "./BankConfigModal";
 
-const STORAGE_KEY =
-  "conciliacao-m8-bancos-v1";
 
 /*
  * Quantidade máxima de retomadas automáticas após a
@@ -47,7 +45,7 @@ type SortKey =
   | "numeroLinha"
   | "cliente"
   | "documento"
-  | "dataVencimento"
+  | "tipo"
   | "dataPagamento"
   | "valor"
   | "tituloId"
@@ -63,7 +61,7 @@ type SortDirection =
 interface ColumnFilters {
   cliente: string;
   documento: string;
-  vencimento: string;
+  tipo: string;
   pagamento: string;
   valor: string;
   titulo: string;
@@ -103,7 +101,7 @@ interface DetailModalState {
 const EMPTY_FILTERS: ColumnFilters = {
   cliente: "",
   documento: "",
-  vencimento: "",
+  tipo: "",
   pagamento: "",
   valor: "",
   titulo: "",
@@ -185,11 +183,13 @@ export default function MainApp() {
 
   const [banks, setBanks] =
     useState<BankConfig[]>(
-      defaultBanks as BankConfig[]
+      () => loadBanks()
     );
 
+  const [dateReviewRow, setDateReviewRow] = useState<NormalizedCsvRow | null>(null);
+
   const [bankId, setBankId] =
-    useState("banco-teste");
+    useState("viacredi");
 
   const [company, setCompany] =
     useState(1);
@@ -202,13 +202,11 @@ export default function MainApp() {
       "pendentes"
     );
 
-  const [headers, setHeaders] =
-    useState<string[]>([]);
-
   const [rawRows, setRawRows] =
     useState<
       Array<{
         numeroLinha: number;
+        columns?: string[];
 
         values:
           Record<string, string>;
@@ -292,17 +290,10 @@ export default function MainApp() {
   ========================================================== */
 
   useEffect(() => {
-    const saved =
-      localStorage.getItem(
-        STORAGE_KEY
-      );
-
-    if (saved) {
-      try {
-        setBanks(
-          JSON.parse(saved)
-        );
-      } catch {}
+    try {
+      setBanks(loadBanks(localStorage.getItem(BANK_M8_STORAGE_KEY)));
+    } catch {
+      // O layout e os padrões continuam disponíveis sem armazenamento local.
     }
   }, []);
 
@@ -322,18 +313,15 @@ export default function MainApp() {
   ========================================================== */
 
   useEffect(() => {
-    if (
-      rawRows.length &&
-      bank
-    ) {
-      setRows(
-        normalizeRows(
-          rawRows,
-          bank
-        )
-      );
-    }
-  }, [bankId]);
+    // Cada arquivo pertence ao layout do banco selecionado na importação.
+    setRawRows([]);
+    setRows([]);
+    setFileName("");
+    setMessage("");
+    setProgress(INITIAL_PROGRESS);
+    clearFilters();
+    setDateReviewRow(null);
+  }, [bankId, company]);
 
   /* ==========================================================
      CONTADORES
@@ -472,7 +460,8 @@ export default function MainApp() {
                 r.numeroLinha,
                 r.cliente,
                 r.documento,
-                r.dataVencimento,
+                r.tipo,
+                r.tipo === "C" ? "Crédito" : r.tipo === "D" ? "Débito" : "",
                 r.dataPagamento,
                 dateBr(
                   r.dataPagamento
@@ -530,13 +519,13 @@ export default function MainApp() {
           }
 
           if (
-            columnFilters.vencimento &&
+            columnFilters.tipo &&
             String(
-              r.dataVencimento || ""
+              r.tipo || ""
             )
               .trim()
               .toUpperCase() !==
-              columnFilters.vencimento
+              columnFilters.tipo
                 .trim()
                 .toUpperCase()
           ) {
@@ -781,66 +770,42 @@ export default function MainApp() {
       return;
     }
 
-    if (
-      !file.name
-        .toLowerCase()
-        .endsWith(".csv")
-    ) {
-      setMessage(
-        "Selecione um arquivo .CSV."
-      );
+    e.currentTarget.value = "";
+    const spreadsheet = bank.formato === "xls";
+    const validExtension = spreadsheet ? /\.xlsx?$/i.test(file.name) : /\.csv$/i.test(file.name);
+    if (!validExtension) {
+      setMessage(spreadsheet ? "Selecione um arquivo .XLS ou .XLSX do Sicredi." : "Selecione um arquivo .CSV do Viacredi.");
       return;
     }
 
+    setBusy(true);
     try {
-      const text =
-        await file.text();
-
-      const parsed =
-        parseCsv(text);
-
-      setHeaders(
-        parsed.headers
-      );
-
-      setRawRows(
-        parsed.rows
-      );
-
-      setFileName(
-        file.name
-      );
-
-      setRows(
-        normalizeRows(
-          parsed.rows,
-          bank
-        )
-      );
-
+      let parsedRows: typeof rawRows;
+      let detail: string;
+      if (spreadsheet) {
+        const { parseSicrediSpreadsheet } = await import("@/lib/spreadsheet");
+        const parsed = parseSicrediSpreadsheet(await file.arrayBuffer());
+        parsedRows = parsed.rows;
+        detail = `Primeira linha de dados detectada: ${parsed.firstDataRow}.`;
+        if (parsed.skippedRows) detail += ` ${parsed.skippedRows} linha(s) sem data válida ignorada(s) após o início dos dados.`;
+      } else {
+        const parsed = parseCsv(await file.text());
+        parsedRows = parsed.rows;
+        detail = `Delimitador detectado: ${parsed.delimiter === "\t" ? "TAB" : parsed.delimiter}.`;
+      }
+      const normalized = normalizeRows(parsedRows, bank);
+      setRawRows(parsedRows);
+      setFileName(file.name);
+      setRows(normalized);
       clearFilters();
-
       setSortKey(null);
       setSortDirection(null);
-
-      setProgress(
-        INITIAL_PROGRESS
-      );
-
-      setMessage(
-        `Arquivo carregado: ${parsed.rows.length} registro(s). Delimitador detectado: ${
-          parsed.delimiter ===
-          "\t"
-            ? "TAB"
-            : parsed.delimiter
-        }`
-      );
+      setProgress(INITIAL_PROGRESS);
+      setMessage(`Arquivo carregado: ${normalized.length} registro(s). ${detail}`);
     } catch (err) {
-      setMessage(
-        err instanceof Error
-          ? err.message
-          : "Falha ao ler CSV."
-      );
+      setMessage(err instanceof Error ? err.message : "Falha ao ler o extrato.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -848,99 +813,18 @@ export default function MainApp() {
      SALVAR BANCO
   ========================================================== */
 
-  function saveBank(
-    updated: BankConfig
-  ) {
-    const next =
-      banks.map(
-        (b) =>
-          b.id ===
-          updated.id
-            ? updated
-            : b
-      );
-
-    setBanks(next);
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(next)
+  function saveBank(updated: BankConfig) {
+    const next = banks.map((b) =>
+      b.id === updated.id ? { ...b, m8: { ...updated.m8 } } : b
     );
-
+    setBanks(next);
     setShowConfig(false);
-
-    if (rawRows.length) {
-      setRows(
-        normalizeRows(
-          rawRows,
-          updated
-        )
-      );
+    try {
+      localStorage.setItem(BANK_M8_STORAGE_KEY, serializeM8(next));
+      setMessage("Configuração M8 salva neste navegador.");
+    } catch {
+      setMessage("Configuração M8 aplicada nesta sessão. Não foi possível salvar no navegador.");
     }
-
-    setMessage(
-      "Configuração do banco salva neste navegador."
-    );
-  }
-
-  /* ==========================================================
-     NOVO BANCO
-  ========================================================== */
-
-  function newBank() {
-    const id =
-      `banco-${Date.now()}`;
-
-    const empty:
-      BankConfig = {
-      id,
-
-      nome:
-        "Novo Banco",
-
-      mapping: {
-        cliente: "",
-        dataVencimento:
-          "",
-        dataPagamento:
-          "",
-        documento:
-          "",
-        valor: "",
-      },
-
-      m8: {
-        contaContabilId:
-          0,
-
-        historicoId:
-          0,
-
-        meioPagamentoId:
-          0,
-
-        observacaoInterna:
-          "Baixa automática via conciliação bancária",
-
-        complemento:
-          "",
-      },
-    };
-
-    const next = [
-      ...banks,
-      empty,
-    ];
-
-    setBanks(next);
-    setBankId(id);
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(next)
-    );
-
-    setShowConfig(true);
   }
 
   /* ==========================================================
@@ -1266,7 +1150,7 @@ export default function MainApp() {
   async function conciliar() {
     if (!rows.length) {
       return setMessage(
-        "Importe um CSV antes de conciliar."
+        "Importe um extrato antes de conciliar."
       );
     }
 
@@ -1336,6 +1220,8 @@ export default function MainApp() {
           return {
             ...r,
 
+            correspondenciaData: undefined,
+            revisaoData: undefined,
             status:
               "conciliando",
 
@@ -1536,6 +1422,7 @@ export default function MainApp() {
                 body:
                   JSON.stringify({
                     company,
+                    bankId,
 
                     /*
                      * Enviamos somente os registros que ainda
@@ -1828,6 +1715,7 @@ export default function MainApp() {
             body:
               JSON.stringify({
                 company,
+                bankId,
                 rows:
                   aptas,
                 config:
@@ -2069,300 +1957,68 @@ export default function MainApp() {
     CONTROLES / CONFIGURAÇÃO INICIAL
 ====================================================== */}
 
-<section
-  className="panel controls"
-  style={{
-    display: "grid",
-
-    /*
-     * Arquivo recebe mais espaço.
-     * Configuração e Banco ficam intermediários.
-     * Empresa M8 fica compacta.
-     */
-    gridTemplateColumns:
-      "minmax(280px, 1.45fr) minmax(220px, 1fr) minmax(210px, 0.95fr) minmax(120px, 0.55fr)",
-
-    gap: "16px",
-
-    alignItems: "start",
-
-    padding: "18px",
-  }}
->
-
-  {/* ====================================================
-      1. ARQUIVO CSV
-  ==================================================== */}
-
-  <label
-    className="file-control"
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "7px",
-      minWidth: 0,
-    }}
-  >
-    <span
-      style={{
-        height: "auto",
-        padding: 0,
-        background: "transparent",
-        border: 0,
-        borderRadius: 0,
-        color: "#294969",
-        fontSize: "12px",
-        fontWeight: 750,
-        cursor: "default",
-        overflow: "visible",
-      }}
-    >
-      1. Arquivo CSV
-    </span>
-
-    <input
-      type="file"
-      accept=".csv,text/csv"
-      disabled={busy}
-      onChange={chooseFile}
-    />
-
-    <span
-      title={fileName || "Selecionar arquivo CSV"}
-      style={{
-        display: "flex",
-        alignItems: "center",
-
-        width: "100%",
-        height: "40px",
-
-        padding: "0 12px",
-
-        background: "#f8fbff",
-
-        border: "1px dashed #7f9bbc",
-        borderRadius: "8px",
-
-        color: "#294969",
-
-        fontSize: "12px",
-        fontWeight: 650,
-
-        cursor: busy
-          ? "not-allowed"
-          : "pointer",
-
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-    >
-      {fileName || "Selecionar arquivo CSV"}
-    </span>
-  </label>
-
-  {/* ====================================================
-      2. CONFIGURAÇÃO DO BANCO
-  ==================================================== */}
-
-  <div
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "7px",
-      minWidth: 0,
-    }}
-  >
-    <div
-      style={{
-        color: "#294969",
-        fontSize: "12px",
-        fontWeight: 750,
-        lineHeight: 1.4,
-      }}
-    >
-      2. Configuração do banco
+<section className="panel controls">
+  <div className="setup-field">
+    <label htmlFor="bank-select">1. Banco</label>
+    <div className="bank-selection">
+      <select
+        id="bank-select"
+        className="setup-select"
+        value={bankId}
+        disabled={busy}
+        onChange={(e) => setBankId(e.target.value)}
+      >
+        {banks.map((b) => (
+          <option key={b.id} value={b.id}>{b.nome}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="bank-settings-button"
+        disabled={busy}
+        onClick={() => setShowConfig(true)}
+        title={`Configurar M8 do banco ${bank.nome}`}
+        aria-label={`Configurar M8 do banco ${bank.nome}`}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m9.5 3-.5 2a8 8 0 0 0-1.5.9l-2-.6-2.5 4.4 1.5 1.4a8 8 0 0 0 0 1.8L3 14.3l2.5 4.4 2-.6A8 8 0 0 0 9 19l.5 2h5l.5-2a8 8 0 0 0 1.5-.9l2 .6 2.5-4.4-1.5-1.4a8 8 0 0 0 0-1.8L21 9.7l-2.5-4.4-2 .6A8 8 0 0 0 15 5l-.5-2z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </button>
     </div>
-
-    <button
-      type="button"
-      className="button secondary"
-      disabled={
-        busy ||
-        !rawRows.length
-      }
-      onClick={() =>
-        setShowConfig(true)
-      }
-      title={
-        !rawRows.length
-          ? "Importe primeiro o arquivo CSV para configurar as colunas."
-          : "Configurar o mapeamento das colunas do banco."
-      }
-      style={{
-        width: "100%",
-        height: "40px",
-      }}
-    >
-      Configurar banco
-    </button>
-
-    <span
-      style={{
-        paddingLeft: "2px",
-
-        color: !rawRows.length
-          ? "#9aa6b5"
-          : "#718094",
-
-        fontSize: "11px",
-        fontWeight: 400,
-
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      }}
-    >
-      {!rawRows.length
-        ? "Importe o arquivo CSV primeiro"
-        : "Mapear colunas do arquivo"}
-    </span>
   </div>
 
-  {/* ====================================================
-      3. BANCO
-  ==================================================== */}
-
-  <div
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "7px",
-      minWidth: 0,
-    }}
-  >
-    <div
-      style={{
-        color: "#294969",
-        fontSize: "12px",
-        fontWeight: 750,
-        lineHeight: 1.4,
-      }}
-    >
-      3. Banco
+  <div className="setup-field">
+    <label htmlFor="csv-file">2. Arquivo {bank.formato === "xls" ? "XLS" : "CSV"}</label>
+    <div className="csv-file-picker">
+      <input
+        id="csv-file"
+        type="file"
+        accept={bank.formato === "xls" ? ".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : ".csv,text/csv"}
+        disabled={busy}
+        onChange={chooseFile}
+        aria-describedby="csv-file-name"
+      />
+      <span id="csv-file-name" title={fileName || `Selecionar arquivo ${bank.formato === "xls" ? "XLS" : "CSV"}`}>
+        {fileName || `Selecionar arquivo ${bank.formato === "xls" ? "XLS" : "CSV"}`}
+      </span>
     </div>
+  </div>
 
+  <div className="setup-field">
+    <label htmlFor="company-select">3. Empresa M8</label>
     <select
-      value={bankId}
-      disabled={busy}
-      onChange={(e) =>
-        setBankId(
-          e.target.value
-        )
-      }
-      style={{
-        width: "100%",
-        height: "40px",
-
-        padding: "0 11px",
-
-        background: "white",
-        color: "#17263d",
-
-        border: "1px solid #cfd9e6",
-        borderRadius: "8px",
-
-        outline: "none",
-      }}
-    >
-      {banks.map(
-        (b) => (
-          <option
-            key={b.id}
-            value={b.id}
-          >
-            {b.nome}
-          </option>
-        )
-      )}
-    </select>
-
-    <button
-      type="button"
-      className="link-button"
-      disabled={
-        busy ||
-        !rawRows.length
-      }
-      onClick={newBank}
-      style={{
-        paddingLeft: "2px",
-        height: "17px",
-        lineHeight: "17px",
-      }}
-    >
-      + Adicionar banco
-    </button>
-  </div>
-
-  {/* ====================================================
-      4. EMPRESA M8
-  ==================================================== */}
-
-  <label
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "7px",
-      minWidth: 0,
-    }}
-  >
-    <span
-      style={{
-        color: "#294969",
-        fontSize: "12px",
-        fontWeight: 750,
-        lineHeight: 1.4,
-      }}
-    >
-      4. Empresa M8
-    </span>
-
-    <input
-      type="number"
-      min="1"
+      id="company-select"
+      className="setup-select"
       value={company}
       disabled={busy}
-      onChange={(e) =>
-        setCompany(
-          Number(
-            e.target.value
-          ) || 1
-        )
-      }
-      style={{
-        width: "100%",
-        height: "40px",
-      }}
-    />
-
-    {/*
-     * Espaço invisível para manter
-     * a mesma altura dos blocos que
-     * possuem uma segunda informação.
-     */}
-    <span
-      aria-hidden="true"
-      style={{
-        height: "17px",
-        fontSize: "11px",
-        visibility: "hidden",
-      }}
+      onChange={(e) => setCompany(Number(e.target.value))}
     >
-      espaço
-    </span>
-  </label>
-
+      <option value={1}>1 - RJ Industria</option>
+      <option value={2}>2 - Serrana</option>
+      <option value={27404}>27404 - Criciúma</option>
+    </select>
+  </div>
 </section>
 
       {/* ======================================================
@@ -2711,7 +2367,7 @@ export default function MainApp() {
                 />
 
                 <SortHeader
-                  column="dataVencimento"
+                  column="tipo"
                   label="Tipo"
                 />
 
@@ -2722,7 +2378,7 @@ export default function MainApp() {
 
                 <SortHeader
                   column="valor"
-                  label="Valor CSV"
+                  label="Valor do extrato"
                   className="right"
                 />
 
@@ -2796,11 +2452,11 @@ export default function MainApp() {
                   <select
                     className="column-filter"
                     value={
-                      columnFilters.vencimento
+                      columnFilters.tipo
                     }
                     onChange={(e) =>
                       setColumnFilter(
-                        "vencimento",
+                        "tipo",
                         e.target.value
                       )
                     }
@@ -2936,6 +2592,7 @@ export default function MainApp() {
                       Não encontrado
                     </option>
 
+                    <option value="revisar">Possível correspondência — revisar</option>
                     <option value="conflito">
                       Conflito
                     </option>
@@ -2968,7 +2625,7 @@ export default function MainApp() {
                   >
                     {rows.length ===
                     0
-                      ? "Importe um arquivo CSV para visualizar os registros."
+                      ? "Importe um extrato para visualizar os registros."
                       : "Nenhum registro encontrado com os filtros informados."}
                   </td>
                 </tr>
@@ -2998,20 +2655,20 @@ export default function MainApp() {
 
                       <td>
                         {String(
-                          r.dataVencimento || ""
+                          r.tipo || ""
                         )
                           .trim()
                           .toUpperCase() ===
                         "C"
                           ? "C - Crédito"
                           : String(
-                              r.dataVencimento || ""
+                              r.tipo || ""
                             )
                               .trim()
                               .toUpperCase() ===
                             "D"
                           ? "D - Débito"
-                          : r.dataVencimento ||
+                          : r.tipo ||
                             "—"}
                       </td>
 
@@ -3093,6 +2750,9 @@ export default function MainApp() {
                       >
 
                         {r.statusMensagem}
+                        {r.status === "revisar" && (
+                          <div><button type="button" className="link-button" disabled={busy} onClick={() => setDateReviewRow(r)}>Revisar correspondência</button></div>
+                        )}
 
                         {r.apiError && (
                           <div className="api-error-detail">
@@ -3124,7 +2784,7 @@ export default function MainApp() {
       <BankConfigModal
         open={showConfig}
         bank={bank}
-        headers={headers}
+        detectedStartLine={rawRows[0]?.numeroLinha}
         company={company}
         onClose={() =>
           setShowConfig(false)
@@ -3135,6 +2795,36 @@ export default function MainApp() {
       {/* ======================================================
           DETALHES M8
       ====================================================== */}
+
+      {dateReviewRow && (
+        <div className="modal-backdrop">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="date-review-title">
+            <div className="modal-title">
+              <div><h2 id="date-review-title">Revisar correspondência por data</h2><p>Confira o título e a parcela antes de liberar para baixa.</p></div>
+              <button type="button" className="icon-button" aria-label="Fechar revisão" onClick={() => setDateReviewRow(null)}>×</button>
+            </div>
+            <dl className="form-grid">
+              <div><dt>Cliente / Fornecedor no extrato</dt><dd>{dateReviewRow.cliente}</dd></div>
+              <div><dt>Fornecedor no M8</dt><dd>{dateReviewRow.fornecedorNome || "—"}</dd></div>
+              <div><dt>Título / Parcela M8</dt><dd>{dateReviewRow.tituloId} / {dateReviewRow.parcelaId}</dd></div>
+              <div><dt>Documento no extrato / M8</dt><dd>{dateReviewRow.documento || "—"} / {String(dateReviewRow.tituloM8?.documento || "—")}</dd></div>
+              <div><dt>Valor do extrato / Parcela</dt><dd>{money(dateReviewRow.valor)} / {money(dateReviewRow.parcelaValor)}</dd></div>
+              <div><dt>Vencimento M8 / Pagamento</dt><dd>{dateBr(dateReviewRow.correspondenciaData?.vencimento || "")} / {dateBr(dateReviewRow.dataPagamento)}</dd></div>
+            </dl>
+            <p>{dateReviewRow.correspondenciaData?.motivo}</p>
+            <div className="modal-actions">
+              <button type="button" className="button secondary" onClick={() => setDateReviewRow(null)}>Manter para revisão</button>
+              <button type="button" className="button" disabled={busy} onClick={() => {
+                const reviewed = dateReviewRow;
+                if (!reviewed.tituloId || !reviewed.parcelaId || !reviewed.correspondenciaData || reviewed.valor == null) return;
+                const approval = { aprovadaEm: new Date().toISOString(), company, bankId, tituloId: reviewed.tituloId, parcelaId: reviewed.parcelaId, vencimento: reviewed.correspondenciaData.vencimento, pagamento: reviewed.correspondenciaData.pagamento, valor: reviewed.valor };
+                setRows((current) => current.map((r) => r.rowId === reviewed.rowId && r.status === "revisar" ? { ...r, status: "pronto", revisaoData: approval, statusMensagem: `${r.correspondenciaData?.motivo} Correspondência aprovada manualmente; pronta para baixa.` } : r));
+                setDateReviewRow(null);
+              }}>Confirmar correspondência</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {detailModal && (
 

@@ -1,3 +1,4 @@
+import { calendarForCompany, toleranceForBank, matchDates, Calendar, DateMatch } from "@/lib/matching-dates";
 import {
   autenticarM8,
   listarContasPagar,
@@ -596,9 +597,11 @@ function encontrarTitulosDoFornecedor(
 
 function encontrarParcelasCompativeis(
   row: NormalizedCsvRow,
-  parcelas: M8Parcela[]
-): M8Parcela[] {
-  return parcelas.filter((parcela) => {
+  parcelas: M8Parcela[],
+  calendar: Calendar,
+  tolerance: number
+): Array<{ parcela: M8Parcela; data: DateMatch }> {
+  return parcelas.flatMap((parcela) => {
     /*
      * O fornecedor / favorecido já foi validado
      * anteriormente na seleção do título candidato,
@@ -632,13 +635,8 @@ function encontrarParcelasCompativeis(
         row.dataPagamento
       );
 
-    const dataOk =
-      dataM8 === dataCsv;
-
-    return (
-      valorOk &&
-      dataOk
-    );
+    const data = matchDates(dataM8, dataCsv, calendar, tolerance);
+    return valorOk && data ? [{ parcela, data }] : [];
   });
 }
 
@@ -720,6 +718,8 @@ export async function POST(request: Request) {
         const body = await request.json();
 
         const company = Number(body?.company);
+        const calendar = calendarForCompany(company);
+        const tolerance = toleranceForBank(body?.bankId);
 
         const rows = body?.rows as NormalizedCsvRow[];
 
@@ -1065,6 +1065,7 @@ export async function POST(request: Request) {
           const correspondencias: Array<{
             titulo: M8ContaPagar;
             parcela: M8Parcela;
+            data: DateMatch;
           }> = [];
 
           const errosConsultaParcelas:
@@ -1130,30 +1131,29 @@ export async function POST(request: Request) {
             const parcelasCompativeis =
               encontrarParcelasCompativeis(
                 row,
-                parcelas
+                parcelas,
+                calendar,
+                tolerance
               );
 
             for (
-              const parcela
+              const candidate
               of parcelasCompativeis
             ) {
               correspondencias.push({
                 titulo,
-                parcela,
+                parcela: candidate.parcela,
+                data: candidate.data,
               });
             }
           }
 
           /*
-           * Se nenhuma correspondência foi encontrada e houve
-           * falha de comunicação em uma ou mais consultas de
-           * parcelas, não podemos classificar como
-           * "não encontrado", porque o resultado seria incerto.
+           * Uma consulta incompleta pode ocultar outra candidata.
+           * Não liberamos a linha nem concluímos "não encontrado"
+           * enquanto houver falha na consulta de parcelas.
            */
-          if (
-            !correspondencias.length &&
-            errosConsultaParcelas.length
-          ) {
+          if (errosConsultaParcelas.length) {
             enviar({
               type:
                 "progress",
@@ -1205,8 +1205,8 @@ export async function POST(request: Request) {
 
                 statusMensagem:
                   modoConciliacao === "pendentes"
-                    ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento. Caso já tenha sido processada, tente “Verificar todos os títulos”.`
-                    : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu a Valor + Data de Pagamento.`,
+                    ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu ao valor e à regra de datas (exata, próximo dia útil ou tolerância de ${tolerance} dias). Caso já tenha sido processada, tente “Verificar todos os títulos”.`
+                    : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu ao valor e à regra de datas (exata, próximo dia útil ou tolerância de ${tolerance} dias).`,
               },
             });
 
@@ -1231,7 +1231,7 @@ export async function POST(request: Request) {
                 status: "conflito",
 
                 statusMensagem:
-                  `${correspondencias.length} parcelas correspondem a Valor + Data de Pagamento dentro dos títulos compatíveis. Necessária revisão manual.`,
+                  `${correspondencias.length} parcelas correspondem ao valor e às datas exatas/ajustadas/próximas dentro dos títulos compatíveis. Necessária revisão manual.`,
               },
             });
 
@@ -1263,6 +1263,7 @@ export async function POST(request: Request) {
 
               result: {
                 rowId: row.rowId,
+                correspondenciaData: match.data,
 
                 status: "ja_baixada",
 
@@ -1307,6 +1308,7 @@ export async function POST(request: Request) {
 
               result: {
                 rowId: row.rowId,
+                correspondenciaData: match.data,
 
                 status:
                   "parcialmente_baixada",
@@ -1358,10 +1360,11 @@ export async function POST(request: Request) {
             result: {
               rowId: row.rowId,
 
-              status: "pronto",
-
-              statusMensagem:
-                "Título e parcela encontrados. Parcela disponível para baixa.",
+              status: match.data.tipo === "proximidade" ? "revisar" : "pronto",
+              correspondenciaData: match.data,
+              statusMensagem: match.data.tipo === "proximidade"
+                ? match.data.motivo
+                : `Título e parcela encontrados. ${match.data.motivo} Parcela disponível para baixa.`,
 
               tituloId:
                 titulo.id,

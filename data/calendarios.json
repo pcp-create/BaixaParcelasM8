@@ -1,0 +1,59 @@
+{
+  "nacionaisRecorrentes": [
+    "01-01",
+    "04-21",
+    "05-01",
+    "09-07",
+    "10-12",
+    "11-02",
+    "11-15",
+    "11-20",
+    "12-25"
+  ],
+  "nacionaisPorData": [
+    "2026-04-03"
+  ],
+  "empresas": {
+    "1": {
+      "nome": "RJ Industria",
+      "localidade": "Rio do Sul/SC",
+      "feriadosRecorrentes": [
+        "04-15"
+      ],
+      "feriadosPorData": [
+        "2026-06-04"
+      ]
+    },
+    "2": {
+      "nome": "Serrana",
+      "localidade": "Otacílio Costa/SC",
+      "feriadosRecorrentes": [
+        "11-25"
+      ],
+      "feriadosPorData": [
+        "2026-05-11"
+      ]
+    },
+    "27404": {
+      "nome": "Criciúma",
+      "localidade": "Criciúma/SC",
+      "feriadosRecorrentes": [
+        "01-06",
+        "12-04"
+      ],
+      "feriadosPorData": [
+        "2026-06-04"
+      ]
+    }
+  },
+  "anoReferencia": 2026,
+  "estaduaisPorData": [
+    "2026-08-16"
+  ],
+  "fontes": [
+    "https://agenciagov.ebc.com.br/noticias/202512/confira-o-calendario-oficial-de-feriados-nacionais-e-pontos-facultativos-em-2026",
+    "https://leis.alesc.sc.gov.br/ato-normativo/53811",
+    "https://busca.tjsc.jus.br/dje-consulta/rest/diario/caderno?cdCaderno=4&edicao=4739",
+    "https://www.riodosul.sc.gov.br/cidadao/noticia/prefeitura-de-rio-do-sul-divulga-funcionamento-dos-servicos-publicos-durante-o-feriado-de-corpus-christi"
+  ]
+}

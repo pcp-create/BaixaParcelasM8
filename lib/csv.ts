@@ -189,16 +189,7 @@ export function parseCsv(
         "\n"
       );
 
-  const lines =
-    clean
-      .split("\n")
-      .filter(
-        (line) =>
-          line
-            .trim()
-            .length >
-          0
-      );
+  const lines = clean.split("\n");
 
   if (
     lines.length <
@@ -271,11 +262,13 @@ export function parseCsv(
             numeroLinha:
               idx + 2,
 
+            columns: values,
+
             values:
               obj,
           };
         }
-      );
+      ).filter((row) => row.columns.some((value) => value.trim()));
 
   return {
     headers,
@@ -449,15 +442,20 @@ export function normalizeRows(
         string,
         string
       >;
+    columns?: string[];
   }>,
 
   bank: BankConfig
 ): NormalizedCsvRow[] {
-  return parsedRows.map(
+  return parsedRows.filter((row) =>
+    (bank.detectarInicioPorData || row.numeroLinha >= bank.linhaInicio) &&
+    (row.columns ?? Object.values(row.values)).some((value) => value.trim())
+  ).map(
     (
       {
         numeroLinha,
         values,
+        columns,
       },
 
       idx
@@ -466,41 +464,21 @@ export function normalizeRows(
          PEGAR VALORES ORIGINAIS
       ------------------------------------------------------ */
 
-      const clienteOriginal =
-        values[
-          bank.mapping.cliente
-        ] ?? "";
+      const readColumn = (column: string | number | undefined): string => {
+        if (typeof column === "number") {
+          return (columns ?? Object.values(values))[column - 1] ?? "";
+        }
+        return column ? values[column] ?? "" : "";
+      };
 
-      const pagamentoOriginal =
-        values[
-          bank.mapping
-            .dataPagamento
-        ] ?? "";
-
-      const vencimentoOriginal =
-        values[
-          bank.mapping
-            .dataVencimento
-        ] ?? "";
-
-      const documentoOriginal =
-        values[
-          bank.mapping.documento
-        ] ?? "";
-
-      const valorOriginal =
-        values[
-          bank.mapping.valor
-        ] ?? "";
-
-      /*
-       * A coluna Tipo é identificada automaticamente
-       * pelo próprio nome do cabeçalho.
-       */
-      const tipo =
-        obterTipoMovimento(
-          values
-        );
+      const clienteOriginal = readColumn(bank.mapping.cliente);
+      const pagamentoOriginal = readColumn(bank.mapping.dataPagamento);
+      const vencimentoOriginal = readColumn(bank.mapping.dataVencimento);
+      const documentoOriginal = readColumn(bank.mapping.documento);
+      const valorOriginal = readColumn(bank.mapping.valor);
+      let tipo = bank.mapping.tipo
+        ? readColumn(bank.mapping.tipo).trim().toUpperCase()
+        : obterTipoMovimento(values);
 
       /* ------------------------------------------------------
          NORMALIZAR
@@ -524,70 +502,20 @@ export function normalizeRows(
         documentoOriginal
           .trim();
 
-      const valor =
-        parseCurrency(
-          valorOriginal
-        );
+      const valorOriginalNumerico = parseCurrency(valorOriginal);
+      if (bank.tipoPeloSinal) {
+        tipo = valorOriginalNumerico === null || valorOriginalNumerico === 0
+          ? ""
+          : valorOriginalNumerico > 0 ? "C" : "D";
+      }
+      // O ERP compara o valor da parcela como magnitude positiva.
+      const valor = bank.tipoPeloSinal && valorOriginalNumerico !== null
+        ? Math.abs(valorOriginalNumerico)
+        : valorOriginalNumerico;
+      const tipoInvalido = bank.tipoPeloSinal && !tipo;
 
       const credito =
         tipo === "C";
-
-      /* ------------------------------------------------------
-         DEBUG
-
-         Deixe temporariamente.
-         Assim conseguimos verificar exatamente
-         o que está sendo enviado para a conciliação.
-      ------------------------------------------------------ */
-
-      console.log(
-        "[CSV NORMALIZADO]",
-        {
-          numeroLinha,
-
-          mapeamento: {
-            cliente:
-              bank.mapping
-                .cliente,
-
-            dataPagamento:
-              bank.mapping
-                .dataPagamento,
-
-            valor:
-              bank.mapping
-                .valor,
-
-            tipo:
-              "Tipo (automático)",
-          },
-
-          original: {
-            cliente:
-              clienteOriginal,
-
-            pagamento:
-              pagamentoOriginal,
-
-            valor:
-              valorOriginal,
-
-            tipo,
-          },
-
-          normalizado: {
-            cliente,
-
-            dataPagamento,
-
-            valor,
-
-            tipo,
-
-            credito,
-          },
-        }
-      );
 
       /* ------------------------------------------------------
          RETORNO
@@ -620,12 +548,12 @@ export function normalizeRows(
         tipo,
 
         status:
-          credito
+          tipoInvalido ? "erro" : credito
             ? "credito"
             : "aguardando",
 
         statusMensagem:
-          credito
+          tipoInvalido ? "Valor zerado ou inválido: não foi possível identificar crédito ou débito." : credito
             ? "Crédito identificado no extrato. Não necessita conciliação ou baixa no Contas a Pagar."
             : "Aguardando conciliação",
       };

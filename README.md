@@ -1,6 +1,6 @@
 # Conciliação Bancária + Baixa de Parcelas no ERP M8
 
-Minisistema em **Next.js + TypeScript** para importar extratos CSV, mapear layouts diferentes por banco, localizar Contas a Pagar/Parcelas no ERP M8 e executar a baixa após revisão.
+Minisistema em **Next.js + TypeScript** para importar extratos CSV (Viacredi) e XLS/XLSX (Sicredi), mapear layouts diferentes por banco, localizar Contas a Pagar/Parcelas no ERP M8 e executar a baixa após revisão.
 
 ## Fluxo implementado
 
@@ -43,31 +43,48 @@ npm run dev
 
 Abra `http://localhost:3000`.
 
-## Banco Teste
-
-O projeto inclui `public/modelo-banco-teste.csv` com o layout:
-
-- `CLIENTE`
-- `DATA VENCIMENTO`
-- `DATA DO PAGAMENTO`
-- `DOCUMENTO`
-- `VALOR`
-
-O cadastro **Banco Teste** já vem mapeado para essas colunas.
-
 ## Layouts de bancos
 
-Na tela, clique em **Configurar banco** para apontar qual coluna do CSV representa cada informação interna. O seletor mostra `número da coluna - nome da coluna`.
+Os bancos e seus layouts são definidos em `data/bancos.json`. Nome, primeira linha de dados e mapeamento das colunas são somente leitura na interface. Para cadastrar um banco ou alterar um layout, edite esse arquivo e publique a aplicação novamente.
 
-Os layouts criados/editados são armazenados em `localStorage` do navegador nesta versão. Isso permite começar sem banco de dados. Em uma versão multiusuário, migre essas configurações para Supabase/PostgreSQL.
+O **Viacredi** é selecionado por padrão. A linha 1 contém o cabeçalho; os dados começam na **linha 2**, com as colunas identificadas pela posição, independentemente do texto do cabeçalho:
 
-### Campos do layout
+1. Data do pagamento
+2. Cliente / Fornecedor
+3. Documento
+4. Valor pago
+5. Tipo (`D` = débito; `C` = crédito)
 
-- Cliente / fornecedor
-- Data de vencimento
-- Data de pagamento
-- Documento
-- Valor pago
+O layout não possui data de vencimento. O campo Tipo é independente da data de vencimento. Linhas vazias são ignoradas, preservando a numeração original do arquivo.
+
+### Sicredi — XLS/XLSX
+
+Selecione **Sicredi** antes de escolher o arquivo. A importação lê a primeira aba da planilha e procura a primeira **data válida na coluna 1**. A linha 11 é apenas uma referência do layout: os dados podem começar antes ou depois dela. O aviso de importação informa a linha detectada.
+
+1. Data do pagamento
+2. Cliente / Fornecedor
+3. Documento
+4. Valor pago
+
+Datas podem ser células de data do Excel ou textos `DD/MM/AAAA` / `AAAA-MM-DD`. Linhas sem data válida são ignoradas, preservando a numeração original; o aviso informa quantas linhas não vazias foram ignoradas após o início dos dados. A leitura termina ao encontrar as seções “Saldo da Conta” ou “Lançamentos Futuros”, que não são movimentações efetivadas. Se nenhuma data válida for encontrada, a importação é recusada.
+
+O Tipo é calculado pelo sinal: **positivo = crédito**, **negativo = débito**. Os débitos são convertidos em valores positivos para comparação e baixa no M8; os créditos recebem o status Crédito. Valores inválidos impedem a importação, e valores zerados ficam sinalizados como erro por não permitirem identificar o tipo.
+
+Os padrões do Sicredi são: conta **103066 — Sicredi - RJ**, ID **14700**, Histórico ID **2** e Meio de Pagamento ID **4**. O ID da conta foi confirmado no retorno da API para a empresa 1. Os parâmetros continuam editáveis pela engrenagem do banco. Ao trocar de banco, o extrato anterior é limpo para evitar aplicar outro layout ao mesmo arquivo.
+
+A leitura das planilhas usa [SheetJS](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/), carregado apenas ao importar XLS/XLSX.
+
+### Padrões M8 do Viacredi
+
+- Conta Contábil: **100038 — ViaCredi Alto Vale - RJ IND.**, ID **1033** (confirmado na API para a empresa 1).
+- Histórico ID: **2**
+- Meio Pagamento ID: **4**
+- Observação interna: **Baixa automática via conciliação bancária**
+- Complemento: **Banco Viacredi**
+
+O botão de **engrenagem ao lado do banco selecionado** permite editar esses parâmetros, mesmo antes de importar um CSV. As alterações M8 são salvas somente neste navegador. O layout sempre vem do arquivo; configurações antigas de layout salvas no navegador não são mais carregadas. Na primeira abertura desta versão, os parâmetros M8 partem dos padrões do arquivo.
+
+A seleção inicial segue a ordem **Banco → Arquivo CSV/XLS → Empresa M8**. As empresas disponíveis são **1 - RJ Industria** (padrão), **2 - Serrana** e **27404 - Criciúma**.
 
 ### Configuração M8 por banco
 
@@ -81,18 +98,34 @@ Antes de baixar, preencha:
 
 O sistema bloqueia a ETAPA 4 enquanto os três IDs obrigatórios estiverem zerados.
 
-## Regra de conciliação desta versão
+## Regra de conciliação
 
-Por segurança, o sistema **não baixa somente por documento**.
+Os títulos candidatos continuam sendo localizados pelo fornecedor ou complemento. As parcelas precisam ter o mesmo valor do extrato, com tolerância de R$ 0,01. Para as datas:
 
-1. Localiza títulos cujo `documento` coincide com o CSV.
-2. Consulta as parcelas em aberto desses títulos.
-3. Exige coincidência de **valor/saldo** e **data de vencimento** quando fornecidos.
-4. Se houver uma única parcela possível: `Pronto para baixa`.
-5. Nenhuma: `Não encontrado`.
-6. Mais de uma: `Conflito`, exigindo revisão.
+1. Vencimento e pagamento iguais: correspondência exata.
+2. Vencimento em sábado, domingo ou feriado cadastrado: aceita o pagamento no próximo dia útil.
+3. Pagamento posterior ao vencimento, dentro de `toleranciaDiasConciliacao` em `data/bancos.json` (padrão: **5 dias corridos**): **Possível correspondência — revisar**.
+4. Pagamento antecipado, datas inválidas ou fora das regras: não encontrado.
 
-O nome do cliente/fornecedor é exibido para conferência, mas não elimina automaticamente a correspondência porque descrições bancárias podem ter abreviações diferentes.
+Mais de uma parcela compatível, inclusive uma exata e outra próxima, gera **Conflito**. Falha ao consultar qualquer título candidato impede liberar a linha, pois pode esconder outra correspondência. Parcelas já baixadas ou com baixa parcial mantêm seus estados específicos.
+
+Em **Revisar correspondência**, confira fornecedor, documento, título/parcela, valor, vencimento e data do extrato. **Confirmar correspondência** apenas libera a parcela para a etapa de baixa; não envia uma baixa ao ERP. A API exige essa confirmação para datas próximas, vinculada à empresa, banco, parcela, valor e datas revisados. Uma nova conciliação remove a aprovação anterior. Trocar de banco ou empresa limpa o extrato e a revisão anterior.
+
+A baixa mantém a **data real do pagamento no extrato**, inclusive quando o vencimento foi ajustado para um dia útil.
+
+### Calendário por empresa
+
+O arquivo `data/calendarios.json` reúne feriados nacionais, estaduais e locais:
+
+- **1 — RJ Industria:** Rio do Sul/SC.
+- **2 — Serrana:** Otacílio Costa/SC.
+- **27404 — Criciúma:** Criciúma/SC.
+
+Datas recorrentes usam `MM-DD`; datas móveis ou transferidas usam `AAAA-MM-DD`. O calendário inicial tem referência **2026**: revise as datas móveis e eventuais transferências para outros anos. O feriado de Otacílio Costa observado em 2026 está cadastrado em **11/05**, conforme o calendário do TJSC. Pontos facultativos administrativos não são automaticamente considerados feriados.
+
+Fontes: [calendário nacional de 2026](https://agenciagov.ebc.com.br/noticias/202512/confira-o-calendario-oficial-de-feriados-nacionais-e-pontos-facultativos-em-2026), [decreto estadual de SC](https://leis.alesc.sc.gov.br/ato-normativo/53811), [calendário do TJSC — feriados municipais](https://busca.tjsc.jus.br/dje-consulta/rest/diario/caderno?cdCaderno=4&edicao=4739), [Corpus Christi em Rio do Sul](https://www.riodosul.sc.gov.br/cidadao/noticia/prefeitura-de-rio-do-sul-divulga-funcionamento-dos-servicos-publicos-durante-o-feriado-de-corpus-christi) e [calendário IFSC Criciúma](https://www.ifsc.edu.br/documents/d/campus-criciuma/resolucao_015_2025_-_aprova_o_calendario_academico_2026_assinado-pdf).
+
+Testes locais, com respostas M8 simuladas e sem baixas reais: `node --test tests/*.test.cjs`.
 
 ## Status
 
@@ -101,6 +134,7 @@ O nome do cliente/fornecedor é exibido para conferência, mas não elimina auto
 - Pronto para baixa
 - Não encontrado
 - Conflito
+- Possível correspondência — revisar
 - Baixando
 - Parcela Baixada
 - Erro ao Baixar Parcela (com mensagem retornada)

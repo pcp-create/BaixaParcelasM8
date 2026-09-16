@@ -42,6 +42,8 @@ const labels:
   nao_encontrado:
     "Não encontrado",
 
+  revisar: "Possível correspondência — revisar",
+
   conflito:
     "Conflito",
 

@@ -1,3 +1,4 @@
+import { calendarForCompany, toleranceForBank, matchDates, validDateReview } from "@/lib/matching-dates";
 import {
   autenticarM8,
   baixarParcela,
@@ -277,6 +278,19 @@ export async function POST(
 
           const rows =
             body?.rows as NormalizedCsvRow[];
+
+          const bankId = String(body?.bankId ?? "");
+          // Valida todo o lote antes de autenticar ou efetuar qualquer baixa.
+          if (Array.isArray(rows)) {
+            for (const row of rows) {
+              if (ehCredito(row)) continue;
+              const dateMatch = matchDates(row.parcelaM8?.vencimento, row.dataPagamento, calendarForCompany(company), toleranceForBank(bankId));
+              if (row.status !== "pronto" || !dateMatch ||
+                  (dateMatch.tipo === "proximidade" && !validDateReview(row, company, bankId))) {
+                throw new Error(`Linha ${row.numeroLinha}: correspondência não aprovada para baixa. Concilie e revise as datas antes de continuar.`);
+              }
+            }
+          }
 
           const config =
             body?.config as BankM8Config;

@@ -8,54 +8,15 @@ import {
 
 import {
   BankConfig,
-  CanonicalField,
 } from "@/lib/types";
 
-/* ============================================================
-   CAMPOS DO MAPEAMENTO CSV
-
-   Mantemos a chave interna "dataVencimento" porque ela já está
-   integrada ao restante do sistema, mas na interface o usuário
-   enxerga "Tipo".
-============================================================ */
-
-const fields: Array<{
-  key: CanonicalField;
-  label: string;
-}> = [
-  {
-    key: "cliente",
-    label:
-      "Cliente / Fornecedor",
-  },
-
-  {
-    key:
-      "dataVencimento",
-    label:
-      "Tipo",
-  },
-
-  {
-    key:
-      "dataPagamento",
-    label:
-      "Data do pagamento",
-  },
-
-  {
-    key:
-      "documento",
-    label:
-      "Documento",
-  },
-
-  {
-    key:
-      "valor",
-    label:
-      "Valor pago",
-  },
+const fields: Array<{ key: keyof BankConfig["mapping"]; label: string }> = [
+  { key: "dataPagamento", label: "Data do pagamento" },
+  { key: "cliente", label: "Cliente / Fornecedor" },
+  { key: "documento", label: "Documento" },
+  { key: "valor", label: "Valor pago" },
+  { key: "tipo", label: "Tipo" },
+  { key: "dataVencimento", label: "Data de vencimento" },
 ];
 
 /* ============================================================
@@ -69,14 +30,12 @@ interface ContaContabil {
 }
 
 interface Props {
+  detectedStartLine?: number;
   open: boolean;
 
   bank:
     | BankConfig
     | null;
-
-  headers:
-    string[];
 
   company:
     number;
@@ -169,7 +128,7 @@ function normalizarTexto(
 export default function BankConfigModal({
   open,
   bank,
-  headers,
+  detectedStartLine,
   company,
   onClose,
   onSave,
@@ -241,6 +200,7 @@ export default function BankConfigModal({
     },
     [
       bank,
+      open,
     ]
   );
 
@@ -521,40 +481,6 @@ export default function BankConfigModal({
   }
 
   /* ==========================================================
-     ATUALIZAR MAPEAMENTO
-  ========================================================== */
-
-  const updateMapping = (
-    key:
-      CanonicalField,
-
-    value:
-      string
-  ) =>
-    setDraft(
-      (
-        atual
-      ) => {
-        if (
-          !atual
-        ) {
-          return atual;
-        }
-
-        return {
-          ...atual,
-
-          mapping: {
-            ...atual.mapping,
-
-            [key]:
-              value,
-          },
-        };
-      }
-    );
-
-  /* ==========================================================
      ATUALIZAR CONFIGURAÇÃO M8
   ========================================================== */
 
@@ -624,6 +550,8 @@ export default function BankConfigModal({
           m8: {
             ...atual.m8,
 
+            contaContabilNome: conta.nome,
+            contaContabilCodigo: conta.codigo,
             contaContabilId:
               Number(
                 conta.id
@@ -663,6 +591,8 @@ export default function BankConfigModal({
           m8: {
             ...atual.m8,
 
+            contaContabilNome: undefined,
+            contaContabilCodigo: "",
             contaContabilId:
               0,
           },
@@ -690,11 +620,11 @@ export default function BankConfigModal({
         <div className="modal-title">
           <div>
             <h2>
-              Configuração do banco
+              Configuração M8 — {draft.nome}
             </h2>
 
             <p>
-              Mapeie o layout do CSV e os IDs usados na baixa do M8.
+              Confira o layout predefinido e edite os parâmetros de baixa no M8.
             </p>
           </div>
 
@@ -709,97 +639,21 @@ export default function BankConfigModal({
           </button>
         </div>
 
-        {/* ====================================================
-            NOME DO BANCO
-        ==================================================== */}
-
-        <label>
-          Nome do banco
-
-          <input
-            value={
-              draft.nome
-            }
-            onChange={(
-              e
-            ) =>
-              setDraft({
-                ...draft,
-
-                nome:
-                  e.target
-                    .value,
-              })
-            }
-          />
-        </label>
-
-        {/* ====================================================
-            MAPEAMENTO CSV
-        ==================================================== */}
-
-        <h3>
-          Mapeamento do CSV
-        </h3>
-
-        <div className="form-grid">
-          {fields.map(
-            (
-              f
-            ) => (
-              <label
-                key={
-                  f.key
-                }
-              >
-                {f.label}
-
-                <select
-                  value={
-                    draft
-                      .mapping[
-                      f.key
-                    ]
-                  }
-                  onChange={(
-                    e
-                  ) =>
-                    updateMapping(
-                      f.key,
-                      e.target
-                        .value
-                    )
-                  }
-                >
-                  <option value="">
-                    Selecione...
-                  </option>
-
-                  {headers.map(
-                    (
-                      h,
-                      i
-                    ) => (
-                      <option
-                        key={
-                          h
-                        }
-                        value={
-                          h
-                        }
-                      >
-                        {i +
-                          1}{" "}
-                        -{" "}
-                        {h}
-                      </option>
-                    )
-                  )}
-                </select>
-              </label>
-            )
-          )}
-        </div>
+        <h3>Layout do {draft.formato === "xls" ? "XLS" : "CSV"}</h3>
+        <p>
+          {draft.detectarInicioPorData
+            ? `Início automático pela primeira data válida na coluna 1.${detectedStartLine ? ` Linha detectada: ${detectedStartLine}.` : ""}`
+            : `Primeira linha de dados: ${draft.linhaInicio}.`} Layout predefinido, sem edição nesta tela.
+        </p>
+        <dl className="csv-layout-columns" aria-label="Colunas configuradas do extrato" tabIndex={0}>
+          {fields.filter((field) => draft.mapping[field.key]).map((field) => (
+            <div key={field.key}>
+              <dt>{typeof draft.mapping[field.key] === "number" ? "Coluna " : "Cabeçalho "}{draft.mapping[field.key]}</dt>
+              <dd>{field.label}</dd>
+            </div>
+          ))}
+        </dl>
+        {draft.tipoPeloSinal && <p>Tipo automático: valor positivo = crédito; valor negativo = débito.</p>}
 
         {/* ====================================================
             CONFIGURAÇÃO M8
@@ -858,7 +712,7 @@ export default function BankConfigModal({
                         ? contaLabel(
                             contaSelecionada
                           )
-                        : `ID ${draft.m8.contaContabilId}`
+                        : [draft.m8.contaContabilCodigo, draft.m8.contaContabilNome].filter(Boolean).join(" - ") || "Conta selecionada"
                     }
                     style={{
                       display:
@@ -898,11 +752,13 @@ export default function BankConfigModal({
                         1.25,
                     }}
                   >
-                    {contaSelecionada
+                    <div><div>{contaSelecionada
                       ? contaLabel(
                           contaSelecionada
                         )
-                      : `Conta Contábil ID ${draft.m8.contaContabilId}`}
+                      : [draft.m8.contaContabilCodigo, draft.m8.contaContabilNome].filter(Boolean).join(" - ") || "Conta selecionada"}</div>
+                      <small className="account-id-note">ID: {draft.m8.contaContabilId}</small>
+                    </div>
                   </div>
 
                   <button
@@ -1075,6 +931,7 @@ export default function BankConfigModal({
                               {conta.nome}
                             </>
                           )}
+                          <small className="account-id-note">ID: {conta.id}</small>
                         </button>
                       )
                     )

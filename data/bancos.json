@@ -1,20 +1,51 @@
 [
   {
-    "id": "banco-teste",
-    "nome": "Banco Teste",
+    "id": "viacredi",
+    "nome": "Viacredi",
+    "linhaInicio": 2,
     "mapping": {
-      "cliente": "CLIENTE",
-      "dataVencimento": "DATA VENCIMENTO",
-      "dataPagamento": "DATA DO PAGAMENTO",
-      "documento": "DOCUMENTO",
-      "valor": "VALOR"
+      "dataPagamento": 1,
+      "cliente": 2,
+      "documento": 3,
+      "valor": 4,
+      "tipo": 5,
+      "dataVencimento": ""
     },
     "m8": {
-      "contaContabilId": 0,
-      "historicoId": 0,
-      "meioPagamentoId": 0,
+      "contaContabilId": 1033,
+      "contaContabilNome": "ViaCredi Alto Vale - RJ IND.",
+      "historicoId": 2,
+      "meioPagamentoId": 4,
       "observacaoInterna": "Baixa automática via conciliação bancária",
-      "complemento": "Banco Teste"
-    }
+      "complemento": "Banco Viacredi",
+      "contaContabilCodigo": "100038"
+    },
+    "formato": "csv",
+    "toleranciaDiasConciliacao": 5
+  },
+  {
+    "id": "sicredi",
+    "nome": "Sicredi",
+    "formato": "xls",
+    "linhaInicio": 11,
+    "detectarInicioPorData": true,
+    "tipoPeloSinal": true,
+    "mapping": {
+      "dataPagamento": 1,
+      "cliente": 2,
+      "documento": 3,
+      "valor": 4,
+      "dataVencimento": ""
+    },
+    "m8": {
+      "contaContabilId": 14700,
+      "historicoId": 2,
+      "meioPagamentoId": 4,
+      "observacaoInterna": "Baixa automática via conciliação bancária",
+      "complemento": "Banco Sicredi",
+      "contaContabilCodigo": "103066",
+      "contaContabilNome": "Sicredi - RJ"
+    },
+    "toleranciaDiasConciliacao": 5
   }
 ]
