@@ -201,7 +201,7 @@ test('busca por complemento da parcela mantém conflitos e erros de consulta', a
   const options={titles:[{id:1,fornecedorNome:'OUTRA EMPRESA',saldo:100}]};
   assert.equal((await reconcile([parcel('2026-09-17',{complemento:'Fornecedor exemplo'}),parcel('2026-09-17',{id:12,complemento:'Fornecedor exemplo'})],baseRow,options)).status,'conflito');
   assert.equal((await reconcile([],baseRow,{...options,failId:1})).status,'erro');
-  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'PAGAMENTO PIX BANCO'})],{...baseRow,cliente:'PIX BANCO'},options)).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'PAGAMENTO PIX BANCO'})],{...baseRow,cliente:'PIX BANCO'},options)).status,'pronto');
 });
 
 const {selectValueSuggestion} = load('lib/value-suggestions.ts');
@@ -362,14 +362,14 @@ test('sugestões exigem CLIENTE completo no complemento do título ou da própri
   const row={...baseRow,cliente:'PG.P/INTERNET - DISK AMP TENHA LOGISTICA LTD',valor:51};
   const options=complemento=>({titles:[{id:1,fornecedorNome:'DISK AMP TENHA',complemento,saldo:100}]});
   assert.equal((await reconcile([parcel('2026-09-17')],row,options('BNDES PRONAMPE'))).status,'nao_encontrado');
-  assert.equal((await reconcile([parcel('2026-09-17')],row,options('DISK AMP TENHA LOGISTICA LTD'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options('DISK AMP TENHA LOGISTICA LTD'))).status,'sugestao');
   const full='Observação: pg.p/internet - disk amp tenha logística ltd / pagamento';
   assert.equal((await reconcile([parcel('2026-09-17')],row,options(full))).status,'sugestao');
   const result=await reconcile([parcel('2026-09-17',{complemento:full}),parcel('2026-09-17',{id:12,complemento:'DISK AMP'})],row,options(''));
   assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11]);
   assert.equal((await reconcile([parcel('2026-09-17')],row,options(row.cliente+'A'))).status,'nao_encontrado');
-  // A regra nova não altera a conciliação com valor exato pelo fornecedor.
-  assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'pronto');
+  // fornecedorNome sozinho não substitui pessoaNome na regra atual.
+  assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'nao_encontrado');
 });
 
 test('usa tituloId da consulta na URL de parcelas e no resultado da conciliação', async t => {
@@ -418,4 +418,41 @@ test('conflito permite escolha manual de parcela aberta e mantém reserva por li
   const cleared=clearValueSelection(selected);
   assert.equal(cleared.parcelaId,undefined);
   assert.equal(selectSuggestionInRows([cleared,other],'other',result.sugestoesValor[1],1,'sicredi')[1].status,'pronto');
+});
+
+
+test('remove somente o prefixo anterior ao primeiro separador nos complementos', async () => {
+  const options = complemento => ({titles:[{id:1,fornecedorNome:'OUTRA EMPRESA',complemento,saldo:100}]});
+  for (const cliente of ['PG.P/INTERNET - CD PROPAGANDA','DEBITO PIX -  CD PROPAGANDA','TR.INTERNET - CD PROPAGANDA','NOVO PREFIXO - CD PROPAGANDA','CD PROPAGANDA']) {
+    const row={...baseRow,cliente,valor:105};
+    assert.equal((await reconcile([parcel('2026-09-17')],row,options('DDA CD PROPAGANDA'))).status,'sugestao');
+    assert.equal((await reconcile([parcel('2026-09-17',{complemento:'DDA CD PROPAGANDA'})],row,options(''))).status,'sugestao');
+    assert.equal(row.cliente,cliente);
+  }
+  const row={...baseRow,cliente:'PREFIXO - CD PROPAGANDA - FILIAL',valor:105};
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options('CD PROPAGANDA - FILIAL'))).status,'sugestao');
+  for (const complemento of ['CD PROPAGANDA','FILIAL','PREFIXO']) {
+    assert.equal((await reconcile([parcel('2026-09-17')],row,options(complemento))).status,'nao_encontrado');
+  }
+  assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'PREFIXO - '},options('PREFIXO'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'CD-PROPAGANDA'},options('PROPAGANDA'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,cliente:'PREFIXO NOVO - CD PROPAGANDA'},options('PREFIXO NOVO'))).status,'nao_encontrado');
+});
+
+
+test('identificação segue pessoaNome, complemento do título e complemento da parcela nessa ordem', async () => {
+  const row={...baseRow,cliente:'PG.P/INTERNET - CD PROPAGANDA',valor:1489,dataPagamento:'2026-09-14'};
+  const title={id:62362,pessoaNome:'FUCHS E NERGHERBON PROPAGANDAS LTDA ME',saldo:1489};
+  const item=parcel('2026-09-14',{id:84883,valor:1489,saldo:1489,pessoaNome:'CD PROPAGANDA',complemento:null});
+  const run=(titulo,parcela,valor=1489)=>reconcile([parcela],{...row,valor},{titles:[titulo]});
+  const byPerson=await run({...title,complemento:'CD PROPAGANDA'}, {...item,complemento:'CD PROPAGANDA'});
+  assert.equal(byPerson.status,'pronto');
+  assert.match(byPerson.statusMensagem,/pelo pessoaNome/);
+  assert.equal((await run(title,item,1500)).status,'sugestao');
+  const byTitle=await run({...title,complemento:'CD PROPAGANDA\nADESIVOS DE PROPAGANDA'}, {...item,pessoaNome:'OUTRO',complemento:'CD PROPAGANDA'});
+  assert.match(byTitle.statusMensagem,/complemento do título/);
+  const byParcel=await run(title,{...item,pessoaNome:'OUTRO',complemento:'CD PROPAGANDA'});
+  assert.match(byParcel.statusMensagem,/complemento da parcela/);
+  assert.equal((await run(title,{...item,pessoaNome:'ABCD PROPAGANDA',complemento:'CD'})).status,'nao_encontrado');
+  assert.equal((await reconcile([item],{...row,cliente:'CD PROPAGANDA'},{titles:[title]})).status,'pronto');
 });

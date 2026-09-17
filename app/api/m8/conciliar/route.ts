@@ -311,136 +311,31 @@ function extrairPrefixoFornecedor(valor: unknown): string {
    Palavras genéricas são descartadas.
 ============================================================ */
 
-function palavrasRelevantesCsv(clienteCsv: string): string[] {
-  const texto = normalizarTexto(clienteCsv);
-
-  if (!texto) {
-    return [];
-  }
-
-  return texto
-    .split(/\s+/)
-    .map((palavra) => palavra.trim())
-    .filter(Boolean)
-    .filter((palavra) => palavra.length >= 3)
-    .filter((palavra) => !PALAVRAS_IGNORADAS.has(palavra));
+function clienteSemPrefixoBanco(clienteCsv: string): string {
+  const separador = clienteCsv.indexOf(" - ");
+  return (separador >= 0 ? clienteCsv.slice(separador + 3) : clienteCsv).trim();
 }
 
-/* ============================================================
-   COMPATIBILIDADE COM fornecedorNome
-
-   Mantém a regra que já tínhamos:
-
-   primeira palavra relevante do fornecedor M8
-   precisa aparecer no cliente do CSV.
-============================================================ */
-
-function clienteCompativelFornecedor(
-  clienteCsv: string,
-  fornecedorM8: unknown
-): boolean {
-  const cliente = normalizarTexto(clienteCsv);
-
-  if (!cliente) {
-    return false;
-  }
-
-  const prefixo = extrairPrefixoFornecedor(fornecedorM8);
-
-  if (!prefixo) {
-    return false;
-  }
-
-  return cliente.includes(prefixo);
-}
-
-/* ============================================================
-   COMPATIBILIDADE COM complemento
-
-   Aqui não podemos pegar simplesmente a primeira palavra
-   do complemento.
-
-   Exemplo:
-
-   complemento:
-   PAGAMENTO ELGI COMPRESSORES
-
-   primeira palavra = PAGAMENTO
-
-   Isso não serviria.
-
-   Então pegamos as palavras relevantes do CSV e verificamos
-   se alguma delas existe no complemento.
-
-   Exemplo:
-
-   CSV:
-   PG.P/INTERNET - ELGI COMPRESSORES DO BRASIL
-
-   complemento:
-   PAGAMENTO ELGI COMPRESSORES
-
-   ELGI → encontrado
-============================================================ */
-
-// Sugestões de valor diferente exigem a descrição completa, sem casar fragmentos.
 function clienteCompletoNoComplemento(clienteCsv: string, complementoM8: unknown): boolean {
-  const cliente = normalizarTexto(clienteCsv);
+  const cliente = normalizarTexto(clienteSemPrefixoBanco(clienteCsv));
   const complemento = normalizarTexto(complementoM8);
   return Boolean(cliente && complemento && ` ${complemento} `.includes(` ${cliente} `));
 }
 
-function clienteCompativelComplemento(
-  clienteCsv: string,
-  complementoM8: unknown
-): boolean {
-  const complemento = normalizarTexto(complementoM8);
-
-  if (!complemento) {
-    return false;
-  }
-
-  const palavrasCsv = palavrasRelevantesCsv(clienteCsv);
-
-  if (!palavrasCsv.length) {
-    return false;
-  }
-
-  return palavrasCsv.some((palavra) =>
-    complemento.includes(palavra)
-  );
+function origemIdentificacao(clienteCsv: string, titulo: M8ContaPagar, parcela?: M8Parcela): string | null {
+  const cliente = normalizarTexto(clienteSemPrefixoBanco(clienteCsv));
+  if (!cliente) return null;
+  const primeiraPalavra = cliente.split(" ")[0];
+  // Compara palavras inteiras: AMP não identifica PRONAMPE.
+  if ([parcela?.pessoaNome, titulo.pessoaNome].some(nome =>
+    ` ${normalizarTexto(nome)} `.includes(` ${primeiraPalavra} `))) return "pessoaNome";
+  if (clienteCompletoNoComplemento(clienteCsv, titulo.complemento)) return "complemento do título";
+  if (clienteCompletoNoComplemento(clienteCsv, parcela?.complemento)) return "complemento da parcela";
+  return null;
 }
 
-/* ============================================================
-   TÍTULO COMPATÍVEL
-
-   NOVA REGRA:
-
-   fornecedorNome
-   OU
-   complemento
-
-   Se encontrar em qualquer um dos dois,
-   o título entra como candidato.
-============================================================ */
-
-function tituloCompativelComCliente(
-  row: NormalizedCsvRow,
-  titulo: M8ContaPagar
-): boolean {
-  const encontrouFornecedor =
-    clienteCompativelFornecedor(
-      row.cliente,
-      titulo.fornecedorNome
-    );
-
-  const encontrouComplemento =
-    clienteCompativelComplemento(
-      row.cliente,
-      titulo.complemento
-    );
-
-  return encontrouFornecedor || encontrouComplemento;
+function tituloCompativelComCliente(row: NormalizedCsvRow, titulo: M8ContaPagar): boolean {
+  return origemIdentificacao(row.cliente, titulo) !== null;
 }
 
 /* ============================================================
@@ -1045,8 +940,7 @@ export async function POST(request: Request) {
 
           // Consulte também títulos sem identificação própria: suas parcelas podem identificar o fornecedor.
           const buscarNoComplementoParcela = titulosFornecedor.length === 0;
-          const idsTitulosFornecedor = new Set(titulosFornecedor.map((titulo) => titulo.id));
-          const titulosParaConsultar = palavrasRelevantesCsv(row.cliente).length ? titulos : titulosFornecedor;
+          const titulosParaConsultar = normalizarTexto(clienteSemPrefixoBanco(row.cliente)) ? titulos : [];
 
           /* ==================================================
              CONSULTAR PARCELAS
@@ -1119,13 +1013,9 @@ export async function POST(request: Request) {
               }
             }
 
-            const parcelasDoFornecedor = !idsTitulosFornecedor.has(titulo.id)
-              ? parcelas.filter((parcela) => clienteCompativelComplemento(row.cliente, parcela.complemento))
-              : parcelas;
+            const parcelasDoFornecedor = parcelas.filter(parcela => origemIdentificacao(row.cliente, titulo, parcela) !== null);
             const parcelasCompativeis = encontrarParcelasCompativeis(row, parcelasDoFornecedor, calendar, tolerance);
             for (const parcela of parcelasDoFornecedor) {
-              if (!clienteCompletoNoComplemento(row.cliente, titulo.complemento) &&
-                  !clienteCompletoNoComplemento(row.cliente, parcela.complemento)) continue;
               const data = matchDates(parcela.vencimento, row.dataPagamento, calendar, tolerance);
               const principal = normalizarValor(parcela.valor);
               if (!data || situacaoParcela(parcela) !== "aberta" || principal <= 0 ||
@@ -1258,7 +1148,7 @@ export async function POST(request: Request) {
           ================================================== */
 
           const match = correspondencias[0];
-          const origemMensagem = !idsTitulosFornecedor.has(match.titulo.id) ? "Identificado pelo complemento da parcela. " : "";
+          const origemMensagem = `Identificado pelo ${origemIdentificacao(row.cliente, match.titulo, match.parcela)}. `;
 
           const titulo = match.titulo;
           const parcela = match.parcela;
