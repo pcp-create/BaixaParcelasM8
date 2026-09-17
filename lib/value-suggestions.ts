@@ -24,7 +24,7 @@ export function clearValueSelection(row: NormalizedCsvRow): NormalizedCsvRow {
 }
 
 export function selectValueSuggestion(row: NormalizedCsvRow, suggestion: ValueSuggestion, company: number, bankId: string): NormalizedCsvRow {
-  if (!["sugestao", "pronto"].includes(row.status) || !row.sugestoesValor?.includes(suggestion) || row.valor == null) return row;
+  if (!["sugestao", "conflito", "pronto"].includes(row.status) || !row.sugestoesValor?.includes(suggestion) || row.valor == null) return row;
   const { titulo, parcela, data, principal } = suggestion;
   const delta = Math.round(row.valor * 100) - Math.round(principal * 100);
   const juros = Math.max(delta, 0) / 100;

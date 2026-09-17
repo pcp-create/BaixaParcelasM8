@@ -299,7 +299,7 @@ export async function POST(
               }
               const dateMatch = matchDates(row.parcelaM8?.vencimento, row.dataPagamento, calendarForCompany(company), toleranceForBank(bankId));
               if (row.status !== "pronto" || !dateMatch ||
-                  (dateMatch.tipo === "proximidade" && !validDateReview(row, company, bankId))) {
+                  ((dateMatch.tipo === "proximidade" || dateMatch.tipo === "antecipada") && !validDateReview(row, company, bankId))) {
                 throw new Error(`Linha ${row.numeroLinha}: correspondência não aprovada para baixa. Concilie e revise as datas antes de continuar.`);
               }
             }

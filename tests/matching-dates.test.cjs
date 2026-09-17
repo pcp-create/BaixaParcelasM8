@@ -22,7 +22,10 @@ test('datas exatas, inválidas, antecipadas e limites da tolerância', () => {
   assert.equal(match('2026-09-15', '2026-09-15').tipo, 'exata');
   assert.equal(match('2026-09-15', '2026-09-20').tipo, 'proximidade');
   assert.equal(match('2026-09-15', '2026-09-21'), null);
-  assert.equal(match('2026-09-15', '2026-09-14'), null);
+  assert.equal(match('2026-09-15', '2026-09-14').tipo, 'antecipada');
+  assert.equal(match('2026-09-30', '2026-09-01').dias, -29);
+  assert.equal(match('2026-10-01', '2026-09-30'), null);
+  assert.equal(match('2027-09-15', '2026-09-14'), null);
   assert.equal(match('', ''), null);
   assert.equal(match('2026-02-30', '2026-03-02'), null);
   assert.equal(match('2026-09-15', '2026-09-16', empty, 0), null);
@@ -55,8 +58,8 @@ async function reconcile(parcels, row = baseRow, options = {}) {
     '@/lib/amount-adjustment': adjustments,
     '@/lib/m8': {
       autenticarM8: async () => 'mock',
-      listarContasPagar: async () => options.titles ?? [{id:1, fornecedorNome:'FORNECEDOR EXEMPLO', saldo:100}],
-      listarParcelas: async (_, id) => { if(options.failId === id) throw new Error('HTTP 400'); return parcels; },
+      listarContasPagar: async () => options.titles ?? [{id:1, fornecedorNome:'FORNECEDOR EXEMPLO', complemento:'FORNECEDOR EXEMPLO', saldo:100}],
+      listarParcelas: async (_, id) => { if(options.failId === id) throw new Error('HTTP 400'); return options.parcelsByTitle?.[id] ?? parcels; },
     },
   });
   const response = await route.POST(new Request('http://localhost/api/m8/conciliar', {method:'POST', body:JSON.stringify({company:1, bankId:'sicredi', rows:[row], modoConciliacao:'todos'})}));
@@ -72,12 +75,12 @@ test('API mantém valor e fornecedor obrigatórios e classifica proximidade para
   assert.equal((await reconcile([parcel('2026-09-15',{valor:200})])).status,'nao_encontrado');
   assert.equal((await reconcile([parcel('2026-09-15')], {...baseRow,cliente:'OUTRO CLIENTE'})).status,'nao_encontrado');
 });
-test('API libera data exata e próximo dia útil, mas não antecipação', async () => {
+test('API libera data exata e próximo dia útil e exige revisão da antecipação', async () => {
   assert.equal((await reconcile([parcel('2026-09-17')])).status,'pronto');
   const adjusted = await reconcile([parcel('2026-09-12')],{...baseRow,dataPagamento:'2026-09-14'});
   assert.equal(adjusted.status,'pronto');
   assert.equal(adjusted.correspondenciaData.tipo,'dia_util');
-  assert.equal((await reconcile([parcel('2026-09-18')])).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-18')])).status,'revisar');
 });
 test('API mantém conflito entre correspondência exata e próxima', async () => {
   assert.equal((await reconcile([parcel('2026-09-17'),parcel('2026-09-15',{id:12})])).status,'conflito');
@@ -167,6 +170,21 @@ test('baixa envia principal e juros separados e bloqueia juros modificados', asy
   assert.match(await (await route.POST(request({...row,valorJuros:4}))).text(),/juros, desconto ou valor principal alterados/);
   assert.equal(calls.length,1);
   assert.equal(authentications,1);
+});
+
+test('consulta preserva complemento do JSON da parcela até a comparação na conciliação', async (t) => {
+  const { listarParcelas } = load('lib/m8.ts');
+  const complemento = 'Pagamento fornecedor exemplo';
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+    data: [parcel('2026-09-17', { complemento })],
+  }), {status: 200}));
+  const parcelas = await listarParcelas('token-ficticio', 1);
+  assert.equal(parcelas[0].complemento, complemento);
+  const options = {titles: [{id: 1, fornecedorNome: 'OUTRA EMPRESA', saldo: 100}]};
+  const result = await reconcile(parcelas, baseRow, options);
+  assert.equal(result.status, 'pronto');
+  assert.match(result.statusMensagem, /complemento da parcela/);
+  assert.equal((await reconcile(parcelas.map(p => ({...p, complemento: undefined})), baseRow, options)).status, 'nao_encontrado');
 });
 
 test('busca no complemento da própria parcela quando o título não identifica o fornecedor', async () => {
@@ -283,4 +301,121 @@ test('API rejeita lote com parcela duplicada antes de autenticar ou baixar', asy
   assert.match(await response.text(),/selecionada nas linhas 2 e 3/);
   assert.equal(authenticated,0);
   assert.equal(lowered,0);
+});
+
+test('sugere parcela identificada apenas no complemento mesmo havendo outro título candidato', async () => {
+  const row = {...baseRow, cliente:'DEB.PARC.BNDES AUTOMA', valor:11139.22, dataPagamento:'2026-09-15'};
+  const result = await reconcile([], row, {
+    titles:[{id:32545, fornecedorNome:'VIACREDI', complemento:'EMPRESTIMO BNDES',saldo:5291.87}, {id:1543, fornecedorNome:'VIACREDI', complemento:'',saldo:7081.35}],
+    parcelsByTitle:{32545:[parcel('2026-09-15',{id:44865,valor:5291.87,saldo:5291.87})],1543:[parcel('2026-09-15',{id:2041,valor:7081.35,saldo:7081.35,complemento:'DEB.PARC.BNDES AUTOMA'}),parcel('2026-09-15',{id:2042,complemento:'OUTRO CLIENTE'})]},
+  });
+  assert.equal(result.status,'sugestao');
+  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[2041]);
+  assert.equal(result.sugestoesValor[0].juros,4057.87);
+});
+
+test('antecipação no mês gera sugestão e baixa exige aprovação vinculada às datas', async () => {
+  const result = await reconcile([parcel('2026-09-30')], {...baseRow,valor:105});
+  assert.equal(result.status,'sugestao');
+  assert.equal(result.sugestoesValor[0].data.tipo,'antecipada');
+  const calls=[];
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
+    autenticarM8:async()=> 'mock', baixarParcela:async(...args)=>{calls.push(args);return {ok:true};},
+  }});
+  const row={...reviewedRow(),parcelaM8:parcel('2026-09-30'),revisaoData:undefined};
+  const request=r=>new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows:[r],config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4}})});
+  assert.match(await (await route.POST(request(row))).text(),/correspondência não aprovada/);
+  assert.equal(calls.length,0);
+  row.revisaoData={...reviewedRow().revisaoData,vencimento:'2026-09-30'};
+  assert.match(await (await route.POST(request(row))).text(),/"status":"baixada"/);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0][3].data,'2026-09-17T12:00:00.000Z');
+});
+
+test('período cobre mês, antecipação, tolerância, feriados e extrato com vários meses', () => {
+  const period = (payments, calendar=empty, tolerance=5) => dates.consultationPeriod(payments.map(dataPagamento=>({...baseRow,dataPagamento})),calendar,tolerance);
+  assert.deepEqual(period(['2026-09-15']),{inicio:'2026-09-01',fim:'2026-09-30'});
+  assert.deepEqual(period(['2026-09-01']),{inicio:'2026-08-27',fim:'2026-09-30'});
+  assert.deepEqual(period(['2026-09-01'],{recurring:[],dates:['2026-08-31']},0),{inicio:'2026-08-29',fim:'2026-09-30'});
+  assert.deepEqual(period(['2026-12-15','2027-01-02']),{inicio:'2026-12-01',fim:'2027-01-31'});
+  assert.equal(period(['inválida']),null);
+  assert.equal(dates.consultationPeriod([{...baseRow,tipo:'C'}],empty,5),null);
+});
+
+test('consulta de títulos envia período no endpoint documentado e rejeita retorno incompleto', async t => {
+  const {listarContasPagar} = load('lib/m8.ts');
+  let payload = {data:[{id:1543,saldo:7081.35,complemento:'BNDES'}],errors:[]};
+  t.mock.method(globalThis,'fetch',async url=>{
+    const parsed=new URL(url);
+    assert.equal(parsed.pathname,'/v1/financeiro/contapagar/consulta');
+    assert.equal(parsed.searchParams.get('VencimentoInicial'),'2026-09-01T00:00:00');
+    assert.equal(parsed.searchParams.get('VencimentoFinal'),'2026-09-30T23:59:59.999');
+    return new Response(JSON.stringify(payload),{status:200});
+  });
+  const periodo={inicio:'2026-09-01',fim:'2026-09-30'};
+  assert.equal((await listarContasPagar('token-ficticio',periodo))[0].id,1543);
+  payload={data:[],errors:[{message:'consulta incompleta'}]};
+  await assert.rejects(()=>listarContasPagar('token-ficticio',periodo),/lista incompleta/);
+});
+
+test('sugestões exigem CLIENTE completo no complemento do título ou da própria parcela', async () => {
+  const row={...baseRow,cliente:'PG.P/INTERNET - DISK AMP TENHA LOGISTICA LTD',valor:51};
+  const options=complemento=>({titles:[{id:1,fornecedorNome:'DISK AMP TENHA',complemento,saldo:100}]});
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options('BNDES PRONAMPE'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options('DISK AMP TENHA LOGISTICA LTD'))).status,'nao_encontrado');
+  const full='Observação: pg.p/internet - disk amp tenha logística ltd / pagamento';
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options(full))).status,'sugestao');
+  const result=await reconcile([parcel('2026-09-17',{complemento:full}),parcel('2026-09-17',{id:12,complemento:'DISK AMP'})],row,options(''));
+  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11]);
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options(row.cliente+'A'))).status,'nao_encontrado');
+  // A regra nova não altera a conciliação com valor exato pelo fornecedor.
+  assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'pronto');
+});
+
+test('usa tituloId da consulta na URL de parcelas e no resultado da conciliação', async t => {
+  const {listarContasPagar,listarParcelas}=load('lib/m8.ts');
+  const paths=[];
+  t.mock.method(globalThis,'fetch',async url=>{
+    const pathname=new URL(url).pathname;
+    paths.push(pathname);
+    if(pathname.endsWith('/consulta')) return new Response(JSON.stringify({data:[{
+      id:99999,tituloId:1543,pessoaNome:'OUTRA EMPRESA',saldo:0,
+    },{id:99998,tituloId:1543,saldo:100},{id:null,tituloId:0,adiantamento:true}]}));
+    assert.equal(pathname,'/v1/financeiro/contapagar/1543/parcela');
+    return new Response(JSON.stringify({data:[parcel('2026-09-17',{
+      id:2041,tituloId:1543,complemento:'FORNECEDOR EXEMPLO',
+    })]}));
+  });
+  const titles=await listarContasPagar('token-ficticio',{inicio:'2026-09-01',fim:'2026-09-30'});
+  assert.equal(titles[0].id,1543);
+  const parcels=await listarParcelas('token-ficticio',titles[0].id);
+  const result=await reconcile(parcels,baseRow,{titles});
+  assert.equal(result.status,'pronto');
+  assert.equal(result.tituloId,1543);
+  assert.equal(result.parcelaId,2041);
+  assert.equal(paths.length,2);
+  assert.equal(titles.length,1);
+  assert.equal(titles[0].fornecedorNome,'OUTRA EMPRESA');
+  assert.equal(titles[0].saldo,100);
+  assert.equal(titles[0].complemento,undefined);
+});
+
+test('conflito permite escolha manual de parcela aberta e mantém reserva por linha', async () => {
+  const result=await reconcile([parcel('2026-09-17'),parcel('2026-09-15',{id:12}),parcel('2026-09-17',{id:13,saldo:0}),parcel('2026-09-17',{id:14,saldo:50})]);
+  assert.equal(result.status,'conflito');
+  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11,12]);
+  const {selectSuggestionInRows,clearValueSelection}=load('lib/value-suggestions.ts');
+  const row={...baseRow,...result};
+  const selected=selectValueSuggestion(row,result.sugestoesValor[1],1,'sicredi');
+  assert.equal(selected.status,'pronto');
+  assert.equal(selected.parcelaId,12);
+  assert.equal(selected.valorJuros,0);
+  assert.equal(selected.valorDesconto,0);
+  assert.equal(dates.validDateReview(selected,1,'sicredi'),true);
+  const other={...row,rowId:'other'};
+  const rows=[selected,other];
+  assert.equal(selectSuggestionInRows(rows,'other',result.sugestoesValor[1],1,'sicredi'),rows);
+  const cleared=clearValueSelection(selected);
+  assert.equal(cleared.parcelaId,undefined);
+  assert.equal(selectSuggestionInRows([cleared,other],'other',result.sugestoesValor[1],1,'sicredi')[1].status,'pronto');
 });

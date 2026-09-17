@@ -109,7 +109,7 @@ export interface NormalizedCsvRow {
 
   statusMensagem: string;
   correspondenciaData?: {
-    tipo: "exata" | "dia_util" | "proximidade";
+    tipo: "exata" | "dia_util" | "proximidade" | "antecipada";
     vencimento: string;
     pagamento: string;
     dias: number;
@@ -151,6 +151,8 @@ export interface NormalizedCsvRow {
 
 export interface M8ContaPagar {
   id: number;
+
+  tituloId?: number;
 
   empresaId?: number;
 

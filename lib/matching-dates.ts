@@ -41,8 +41,11 @@ export function matchDates(due: unknown, paid: unknown, calendar: Calendar, tole
   const pagamento = civilDate(paid);
   if (!vencimento || !pagamento) return null;
   const dias = (Date.parse(pagamento) - Date.parse(vencimento)) / DAY;
-  if (dias < 0) return null;
   const base = { vencimento, pagamento, dias };
+  if (dias < 0) {
+    if (vencimento.slice(0, 7) !== pagamento.slice(0, 7)) return null;
+    return { ...base, tipo: "antecipada", motivo: `Pagamento antecipado em ${-dias} dia(s), dentro do mesmo mês do vencimento ${vencimento}. Possível correspondência — revisar.` };
+  }
   if (dias === 0) return { ...base, tipo: "exata", motivo: "Pagamento na data do vencimento." };
   if (nonBusinessDay(vencimento, calendar)) {
     let next = vencimento;
@@ -65,4 +68,26 @@ export function validDateReview(row: NormalizedCsvRow, company: number, bankId: 
   return Boolean(review && review.aprovadaEm && review.company === company && review.bankId === bankId &&
     review.tituloId === row.tituloId && review.parcelaId === row.parcelaId && review.valor === row.valor &&
     review.pagamento === civilDate(row.dataPagamento) && review.vencimento === civilDate(row.parcelaM8?.vencimento));
+}
+
+/** Janela de consulta: meses do extrato, tolerância e ajustes de dia útil. */
+export function consultationPeriod(rows: NormalizedCsvRow[], calendar: Calendar, tolerance: number): { inicio: string; fim: string } | null {
+  const payments = rows.filter(row => String(row.tipo ?? "").trim().toUpperCase() !== "C")
+    .map(row => civilDate(row.dataPagamento)).filter((date): date is string => date !== null).sort();
+  if (!payments.length) return null;
+  let start = Date.parse(payments[0].slice(0, 7) + "-01");
+  for (const paid of payments) {
+    const timestamp = Date.parse(paid);
+    start = Math.min(start, timestamp - Math.max(0, tolerance) * DAY);
+    if (!nonBusinessDay(paid, calendar)) {
+      for (let days = 1; days <= 366; days++) {
+        const previous = timestamp - days * DAY;
+        if (!nonBusinessDay(new Date(previous).toISOString().slice(0, 10), calendar)) break;
+        start = Math.min(start, previous);
+      }
+    }
+  }
+  const last = new Date(payments[payments.length - 1] + "T00:00:00Z");
+  const end = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0));
+  return { inicio: new Date(start).toISOString().slice(0, 10), fim: end.toISOString().slice(0, 10) };
 }

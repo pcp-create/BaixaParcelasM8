@@ -1,5 +1,5 @@
 import { amountForMatching } from "@/lib/amount-adjustment";
-import { calendarForCompany, toleranceForBank, matchDates, Calendar, DateMatch } from "@/lib/matching-dates";
+import { consultationPeriod, calendarForCompany, toleranceForBank, matchDates, Calendar, DateMatch } from "@/lib/matching-dates";
 import {
   autenticarM8,
   listarContasPagar,
@@ -382,6 +382,13 @@ function clienteCompativelFornecedor(
 
    ELGI → encontrado
 ============================================================ */
+
+// Sugestões de valor diferente exigem a descrição completa, sem casar fragmentos.
+function clienteCompletoNoComplemento(clienteCsv: string, complementoM8: unknown): boolean {
+  const cliente = normalizarTexto(clienteCsv);
+  const complemento = normalizarTexto(complementoM8);
+  return Boolean(cliente && complemento && ` ${complemento} `.includes(` ${cliente} `));
+}
 
 function clienteCompativelComplemento(
   clienteCsv: string,
@@ -880,6 +887,12 @@ export async function POST(request: Request) {
            CARREGAR CONTAS A PAGAR
         ==================================================== */
 
+        const periodo = consultationPeriod(rows, calendar, tolerance);
+        if (!periodo) throw new Error("Nenhum débito com data de pagamento válida para consultar títulos.");
+
+        enviar({ type: "status", operation: "conciliacao", current: 0, total: rows.length,
+          label: `Consultando títulos com vencimento de ${periodo.inicio} até ${periodo.fim}...` });
+
         const todosTitulos =
           await executarComRetry<
             M8ContaPagar[]
@@ -887,7 +900,7 @@ export async function POST(request: Request) {
             "listar Contas a Pagar",
             () =>
               listarContasPagar(
-                token
+                token, periodo
               )
           );
 
@@ -1030,11 +1043,10 @@ export async function POST(request: Request) {
               titulos
             );
 
-          // A busca na parcela é alternativa quando o título não identifica o fornecedor.
+          // Consulte também títulos sem identificação própria: suas parcelas podem identificar o fornecedor.
           const buscarNoComplementoParcela = titulosFornecedor.length === 0;
-          const titulosParaConsultar = buscarNoComplementoParcela
-            ? (palavrasRelevantesCsv(row.cliente).length ? titulos : [])
-            : titulosFornecedor;
+          const idsTitulosFornecedor = new Set(titulosFornecedor.map((titulo) => titulo.id));
+          const titulosParaConsultar = palavrasRelevantesCsv(row.cliente).length ? titulos : titulosFornecedor;
 
           /* ==================================================
              CONSULTAR PARCELAS
@@ -1107,11 +1119,13 @@ export async function POST(request: Request) {
               }
             }
 
-            const parcelasDoFornecedor = buscarNoComplementoParcela
+            const parcelasDoFornecedor = !idsTitulosFornecedor.has(titulo.id)
               ? parcelas.filter((parcela) => clienteCompativelComplemento(row.cliente, parcela.complemento))
               : parcelas;
             const parcelasCompativeis = encontrarParcelasCompativeis(row, parcelasDoFornecedor, calendar, tolerance);
             for (const parcela of parcelasDoFornecedor) {
+              if (!clienteCompletoNoComplemento(row.cliente, titulo.complemento) &&
+                  !clienteCompletoNoComplemento(row.cliente, parcela.complemento)) continue;
               const data = matchDates(parcela.vencimento, row.dataPagamento, calendar, tolerance);
               const principal = normalizarValor(parcela.valor);
               if (!data || situacaoParcela(parcela) !== "aberta" || principal <= 0 ||
@@ -1224,9 +1238,15 @@ export async function POST(request: Request) {
                 rowId: row.rowId,
 
                 status: "conflito",
-
+                sugestoesValor: correspondencias
+                  .filter(({ parcela }) => situacaoParcela(parcela) === "aberta")
+                  .map(({ titulo, parcela, data }) => {
+                    const principal = normalizarValor(parcela.valor);
+                    const delta = Math.round(row.valor! * 100) - Math.round(principal * 100);
+                    return { titulo, parcela, data, principal, juros: Math.max(delta, 0) / 100, desconto: Math.max(-delta, 0) / 100 };
+                  }),
                 statusMensagem:
-                  `${correspondencias.length} parcelas correspondem ao valor e às datas exatas/ajustadas/próximas dentro dos títulos compatíveis. Necessária revisão manual.`,
+                  `${correspondencias.length} parcelas correspondem ao valor e às regras de datas. Expanda a linha para escolher manualmente entre as parcelas em aberto. Parcelas já baixadas ou parcialmente baixadas não são selecionáveis.`,
               },
             });
 
@@ -1238,7 +1258,7 @@ export async function POST(request: Request) {
           ================================================== */
 
           const match = correspondencias[0];
-          const origemMensagem = buscarNoComplementoParcela ? "Identificado pelo complemento da parcela. " : "";
+          const origemMensagem = !idsTitulosFornecedor.has(match.titulo.id) ? "Identificado pelo complemento da parcela. " : "";
 
           const titulo = match.titulo;
           const parcela = match.parcela;
@@ -1360,11 +1380,11 @@ export async function POST(request: Request) {
             result: {
               rowId: row.rowId,
 
-              status: match.data.tipo === "proximidade" ? "revisar" : "pronto",
+              status: (match.data.tipo === "proximidade" || match.data.tipo === "antecipada") ? "revisar" : "pronto",
               correspondenciaData: match.data,
                 jurosConfirmados: row.valorJuros ?? 0,
                 descontoConfirmado: row.valorDesconto ?? 0,
-              statusMensagem: match.data.tipo === "proximidade"
+              statusMensagem: (match.data.tipo === "proximidade" || match.data.tipo === "antecipada")
                 ? `${origemMensagem}${match.data.motivo}`
                 : `${origemMensagem}Título e parcela encontrados. ${match.data.motivo} Parcela disponível para baixa.`,
 

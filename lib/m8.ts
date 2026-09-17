@@ -333,421 +333,47 @@ export async function autenticarM8(
 ============================================================ */
 
 export async function listarContasPagar(
-  token: string
+  token: string,
+  periodo: { inicio: string; fim: string }
 ): Promise<M8ContaPagar[]> {
-  const params =
-    new URLSearchParams({
-      PageSize: "0",
-      Page: "0",
+  const params = new URLSearchParams({
+    VencimentoInicial: `${periodo.inicio}T00:00:00`,
+    VencimentoFinal: `${periodo.fim}T23:59:59.999`,
+  });
+  const url = `${baseUrl}/v1/financeiro/contapagar/consulta?${params.toString()}`;
+  console.log("[M8] Consultando títulos por vencimento:", url);
+  const response = await request<any>(url, { method: "GET", headers: authHeaders(token) });
+  if (!Array.isArray(response?.data) || response?.errors?.length) {
+    throw new Error("Consulta de títulos por vencimento retornou dados inválidos ou erros. A conciliação não pode continuar com uma lista incompleta.");
+  }
+  const titulos = new Map<number, M8ContaPagar>();
+  for (const registro of response.data) {
+    if (registro.adiantamento === true && Number(registro.tituloId) === 0) continue;
+    const tituloId = Number(registro.tituloId ?? registro.id);
+    if (!Number.isSafeInteger(tituloId) || tituloId <= 0) {
+      throw new Error("Consulta por vencimento retornou registro sem título válido (não é adiantamento).");
+    }
+    const saldo = Number(registro.saldo ?? 0);
+    if (!Number.isFinite(saldo)) throw new Error("Consulta por vencimento retornou saldo inválido.");
+    const existente = titulos.get(tituloId);
+    if (existente) {
+      // Um título pode ter várias parcelas no período. Não perca um título
+      // pendente quando a primeira parcela retornada já estiver paga.
+      existente.saldo = (existente.saldo ?? 0) + Math.max(0, saldo);
+      continue;
+    }
+    titulos.set(tituloId, {
+      ...registro,
+      id: tituloId,
+      tituloId,
+      fornecedorId: registro.fornecedorId ?? registro.pessoaId,
+      fornecedorNome: registro.fornecedorNome ?? registro.pessoaNome,
+      saldo: Math.max(0, saldo),
     });
-
-  const url =
-    `${baseUrl}/v1/financeiro/contapagar?${params.toString()}`;
-
-  console.log("");
-  console.log(
-    "=========================================="
-  );
-
-  console.log(
-    "[M8] ETAPA 2 - CONTAS A PAGAR"
-  );
-
-  console.log(
-    "[M8] URL:",
-    url
-  );
-
-  console.log(
-    "[M8] Query PageSize:",
-    "0"
-  );
-
-  console.log(
-    "[M8] Query Page:",
-    "0"
-  );
-
-  console.log(
-    "=========================================="
-  );
-
-  const inicio =
-    Date.now();
-
-  const response =
-    await request<any>(
-      url,
-
-      {
-        method:
-          "GET",
-
-        headers:
-          authHeaders(
-            token
-          ),
-      }
-    );
-
-  const tempo =
-    Date.now() -
-    inicio;
-
-  console.log("");
-  console.log(
-    "[M8] Resposta recebida."
-  );
-
-  console.log(
-    "[M8] Tempo total:",
-    `${tempo} ms`
-  );
-
-  console.log(
-    "[M8] Tipo da resposta:",
-    typeof response
-  );
-
-  console.log(
-    "[M8] Chaves da resposta:",
-    response &&
-    typeof response === "object"
-      ? Object.keys(response)
-      : []
-  );
-
-  console.log(
-    "[M8] response.data é array:",
-    Array.isArray(
-      response?.data
-    )
-  );
-
-  const titulos:
-    M8ContaPagar[] =
-    Array.isArray(
-      response?.data
-    )
-      ? response.data
-      : [];
-
-  console.log("");
-  console.log(
-    "[M8] TOTAL DE TÍTULOS RECEBIDOS:",
-    titulos.length
-  );
-
-  if (
-    Array.isArray(
-      response?.errors
-    ) &&
-    response.errors.length >
-      0
-  ) {
-    console.warn(
-      "[M8] Errors retornados:",
-      response.errors
-    );
   }
-
-  /* ==========================================================
-     DIAGNÓSTICO 1
-     PROCURAR TÍTULO 43424
-  ========================================================== */
-
-  console.log("");
-  console.log(
-    "=========================================="
-  );
-
-  console.log(
-    "[M8 TESTE] PROCURANDO TÍTULO 43424"
-  );
-
-  const titulo43424 =
-    titulos.find(
-      (titulo: any) =>
-        String(
-          titulo?.id ?? ""
-        ).trim() ===
-        "43424"
-    );
-
-  if (titulo43424) {
-    console.log(
-      "[M8 TESTE] TÍTULO 43424: ENCONTRADO"
-    );
-
-    console.log(
-      JSON.stringify(
-        titulo43424,
-        null,
-        2
-      )
-    );
-  } else {
-    console.log(
-      "[M8 TESTE] TÍTULO 43424: NÃO ENCONTRADO"
-    );
-  }
-
-  console.log(
-    "=========================================="
-  );
-
-  /* ==========================================================
-     DIAGNÓSTICO 2
-     PROCURAR ELGI
-  ========================================================== */
-
-  const titulosElgi =
-    titulos.filter(
-      (titulo: any) =>
-        String(
-          titulo?.fornecedorNome ??
-          ""
-        )
-          .toUpperCase()
-          .includes(
-            "ELGI"
-          )
-    );
-
-  console.log("");
-  console.log(
-    "[M8 TESTE] TÍTULOS CONTENDO ELGI:",
-    titulosElgi.length
-  );
-
-  if (
-    titulosElgi.length >
-    0
-  ) {
-    for (
-      const titulo
-      of titulosElgi
-    ) {
-      console.log(
-        "[M8 ELGI]",
-        {
-          id:
-            titulo.id,
-
-          fornecedorId:
-            titulo.fornecedorId,
-
-          fornecedorNome:
-            titulo.fornecedorNome,
-
-          documento:
-            titulo.documento,
-
-          valor:
-            titulo.valor,
-
-          saldo:
-            titulo.saldo,
-        }
-      );
-    }
-  }
-
-  /* ==========================================================
-     DIAGNÓSTICO 3
-     PROCURAR VALOR 10739
-  ========================================================== */
-
-  const titulosValor10739 =
-    titulos.filter(
-      (titulo: any) => {
-        const valor =
-          Number(
-            titulo?.valor
-          );
-
-        const saldo =
-          Number(
-            titulo?.saldo
-          );
-
-        const valorOk =
-          Number.isFinite(
-            valor
-          ) &&
-          Math.abs(
-            valor -
-            10739
-          ) <= 0.01;
-
-        const saldoOk =
-          Number.isFinite(
-            saldo
-          ) &&
-          Math.abs(
-            saldo -
-            10739
-          ) <= 0.01;
-
-        return (
-          valorOk ||
-          saldoOk
-        );
-      }
-    );
-
-  console.log("");
-  console.log(
-    "[M8 TESTE] REGISTROS COM VALOR OU SALDO 10739:",
-    titulosValor10739.length
-  );
-
-  if (
-    titulosValor10739.length >
-    0
-  ) {
-    for (
-      const titulo
-      of titulosValor10739
-    ) {
-      console.log(
-        "[M8 VALOR 10739]",
-        {
-          id:
-            titulo.id,
-
-          fornecedorNome:
-            titulo.fornecedorNome,
-
-          documento:
-            titulo.documento,
-
-          valor:
-            titulo.valor,
-
-          saldo:
-            titulo.saldo,
-        }
-      );
-    }
-  }
-
-  /* ==========================================================
-     PRIMEIROS 5
-  ========================================================== */
-
-  console.log("");
-  console.log(
-    "[M8 TESTE] PRIMEIROS 5 TÍTULOS:"
-  );
-
-  titulos
-    .slice(
-      0,
-      5
-    )
-    .forEach(
-      (
-        titulo: any,
-        index: number
-      ) => {
-        console.log(
-          `[M8 ${index + 1}]`,
-          {
-            id:
-              titulo?.id,
-
-            fornecedorId:
-              titulo?.fornecedorId,
-
-            fornecedorNome:
-              titulo?.fornecedorNome,
-
-            documento:
-              titulo?.documento,
-
-            valor:
-              titulo?.valor,
-
-            saldo:
-              titulo?.saldo,
-          }
-        );
-      }
-    );
-
-  /* ==========================================================
-     ÚLTIMOS 5
-  ========================================================== */
-
-  console.log("");
-  console.log(
-    "[M8 TESTE] ÚLTIMOS 5 TÍTULOS:"
-  );
-
-  titulos
-    .slice(
-      -5
-    )
-    .forEach(
-      (
-        titulo: any,
-        index: number
-      ) => {
-        console.log(
-          `[M8 FIM ${index + 1}]`,
-          {
-            id:
-              titulo?.id,
-
-            fornecedorId:
-              titulo?.fornecedorId,
-
-            fornecedorNome:
-              titulo?.fornecedorNome,
-
-            documento:
-              titulo?.documento,
-
-            valor:
-              titulo?.valor,
-
-            saldo:
-              titulo?.saldo,
-          }
-        );
-      }
-    );
-
-  console.log("");
-  console.log(
-    "=========================================="
-  );
-
-  console.log(
-    "[M8] ETAPA 2 FINALIZADA"
-  );
-
-  console.log(
-    "[M8] Retornando para conciliação:",
-    titulos.length,
-    "título(s)"
-  );
-
-  console.log(
-    "=========================================="
-  );
-
-  return titulos;
+  console.log(`[M8] Consulta: ${response.data.length} registro(s), ${titulos.size} título(s) distintos.`);
+  return Array.from(titulos.values());
 }
-
-/* ============================================================
-   ETAPA 3
-   LISTAR PARCELAS DO TÍTULO
-
-   GET
-   /v1/financeiro/contapagar/{tituloId}/parcela
-============================================================ */
 
 export async function listarParcelas(
   token: string,
@@ -864,6 +490,9 @@ export async function listarParcelas(
 
         favorecidoNome:
           parcela.favorecidoNome,
+
+        complemento:
+          parcela.complemento,
 
         meioPagamentoId:
           parcela.meioPagamentoId,

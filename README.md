@@ -119,16 +119,19 @@ Somente parcelas em aberto, sem baixa parcial, são oferecidas nessa lista. Corr
 
 ## Regra de conciliação
 
-Os títulos candidatos são localizados pelo fornecedor ou complemento do título. Quando nenhum título corresponde por esses campos, o sistema consulta as parcelas dos títulos do modo selecionado e procura as palavras relevantes do extrato no **complemento de cada parcela**. Somente as parcelas cujo próprio complemento corresponde seguem para validação de valor e datas. As consultas usam cache por título durante a conciliação; uma consulta incompleta impede liberar a linha. As parcelas precisam ter o mesmo valor de **Valor do extrato − Valor juros + Valor desconto**, com tolerância de R$ 0,01. Para as datas:
+A consulta inicial usa `/v1/financeiro/contapagar/consulta`, com `VencimentoInicial` e `VencimentoFinal` calculados pelas datas dos débitos do extrato. O período cobre os meses envolvidos e se estende para trás quando necessário pela tolerância de atraso ou ajuste de dia útil. Depois aplica o filtro local de saldo para o modo pendentes. O filtro da API reduz os títulos cujas parcelas precisam ser consultadas; as validações individuais de data continuam valendo.
+
+Os títulos candidatos são localizados pelo fornecedor ou complemento do título. O sistema também consulta as parcelas dos demais títulos do modo selecionado e procura as palavras relevantes do extrato no **complemento de cada parcela**. Somente as parcelas cujo próprio complemento corresponde seguem para validação de valor e datas. As consultas usam cache por título durante a conciliação; uma consulta incompleta impede liberar a linha. As parcelas precisam ter o mesmo valor de **Valor do extrato − Valor juros + Valor desconto**, com tolerância de R$ 0,01. Para as datas:
 
 1. Vencimento e pagamento iguais: correspondência exata.
 2. Vencimento em sábado, domingo ou feriado cadastrado: aceita o pagamento no próximo dia útil.
 3. Pagamento posterior ao vencimento, dentro de `toleranciaDiasConciliacao` em `data/bancos.json` (padrão: **5 dias corridos**): **Possível correspondência — revisar**.
-4. Pagamento antecipado, datas inválidas ou fora das regras: não encontrado.
+4. Pagamento antecipado dentro do mesmo mês e ano do vencimento: **Possível correspondência — revisar**, ou sugestão para seleção quando o valor difere.
+5. Antecipação de outro mês/ano, datas inválidas ou fora das regras: não encontrado.
 
-Mais de uma parcela compatível, inclusive uma exata e outra próxima, gera **Conflito**. Falha ao consultar qualquer título candidato impede liberar a linha, pois pode esconder outra correspondência. Parcelas já baixadas ou com baixa parcial mantêm seus estados específicos.
+Mais de uma parcela compatível, inclusive uma exata e outra próxima, gera **Conflito**. A linha pode ser expandida para selecionar manualmente uma das parcelas em aberto. A seleção confirma as datas e libera a baixa, mantém a trava contra uso da mesma parcela em outra linha e pode ser removida antes da baixa. Parcelas já baixadas ou parcialmente baixadas não são oferecidas para seleção. Falha ao consultar qualquer título candidato impede liberar a linha, pois pode esconder outra correspondência. Parcelas já baixadas ou com baixa parcial mantêm seus estados específicos.
 
-Em **Revisar correspondência**, confira fornecedor, documento, título/parcela, valor, vencimento e data do extrato. **Confirmar correspondência** apenas libera a parcela para a etapa de baixa; não envia uma baixa ao ERP. A API exige essa confirmação para datas próximas, vinculada à empresa, banco, parcela, valor e datas revisados. Uma nova conciliação remove a aprovação anterior. Trocar de banco ou empresa limpa o extrato e a revisão anterior.
+Em **Revisar correspondência**, confira fornecedor, documento, título/parcela, valor, vencimento e data do extrato. **Confirmar correspondência** apenas libera a parcela para a etapa de baixa; não envia uma baixa ao ERP. A API exige essa confirmação para datas próximas ou antecipadas, vinculada à empresa, banco, parcela, valor e datas revisados. Uma nova conciliação remove a aprovação anterior. Trocar de banco ou empresa limpa o extrato e a revisão anterior.
 
 A baixa mantém a **data real do pagamento no extrato**, inclusive quando o vencimento foi ajustado para um dia útil.
 
@@ -175,3 +178,7 @@ A `DATA DO PAGAMENTO` do CSV é enviada no payload da baixa. Nesta versão ela �
 ## Antes de produção
 
 Faça primeiro testes com uma empresa/conta M8 de homologação ou com registros controlados. A ETAPA 4 altera dados financeiros reais do ERP.
+
+Nas sugestões de parcelas com valor diferente, o texto completo da coluna CLIENTE do extrato deve aparecer no complemento do título ou da própria parcela. A comparação normaliza acentos, maiúsculas e pontuação, preserva todas as palavras na ordem e respeita seus limites (AMP não corresponde a PRONAMPE). Apenas o prefixo do fornecedor não basta para gerar sugestão. As regras de identificação da conciliação com valor exato permanecem iguais.
+
+O retorno real de `/contapagar/consulta` contém registros de parcelas. O sistema agrupa seus `tituloId`, ignora adiantamentos sem título (`adiantamento: true`, `tituloId: 0`) e usa diretamente os dados da consulta, convertendo `pessoaNome` em fornecedor e somando os saldos positivos das parcelas do período por título. Não consulta a listagem geral de títulos. Quando a consulta não fornece complemento do título, a identificação por complemento depende do campo retornado na própria parcela. Apenas os títulos desse conjunto seguem para consulta de parcelas.

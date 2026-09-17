@@ -2663,7 +2663,7 @@ export default function MainApp() {
 
                     <Fragment key={r.rowId}>
                     <tr
-                      className={r.sugestoesValor?.length ? "has-value-suggestions" : undefined}
+                      className={r.sugestoesValor?.length ? `has-value-suggestions${expandedValueRows.has(r.rowId) ? " suggestions-parent-open" : ""}` : undefined}
                       onClick={(event) => {
                         if (!r.sugestoesValor?.length || (event.target as HTMLElement).closest("button,input,select,a")) return;
                         setExpandedValueRows((current) => { const next = new Set(current); if (next.has(r.rowId)) next.delete(r.rowId); else next.add(r.rowId); return next; });
@@ -2672,6 +2672,7 @@ export default function MainApp() {
 
                       <td>
                         {r.numeroLinha}
+                        {!!r.sugestoesValor?.length && expandedValueRows.has(r.rowId) && <span className="expanded-row-label">Extrato ▾</span>}
                       </td>
 
                       <td>
@@ -2801,7 +2802,7 @@ export default function MainApp() {
                       </td>
 
                     </tr>
-                    {expandedValueRows.has(r.rowId) && !!r.sugestoesValor?.length && <tr><td colSpan={11} className="suggestions-cell">
+                    {expandedValueRows.has(r.rowId) && !!r.sugestoesValor?.length && <tr className="suggestions-detail-row"><td colSpan={11} className="suggestions-cell">
                       <ValueSuggestions row={r} rows={rows} disabled={busy} onSelect={(suggestion) => setRows((current) => selectSuggestionInRows(current, r.rowId, suggestion, company, bankId))} />
                     </td></tr>}
                     </Fragment>
