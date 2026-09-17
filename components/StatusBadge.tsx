@@ -42,6 +42,8 @@ const labels:
   nao_encontrado:
     "Não encontrado",
 
+  sugestao: "Selecionar parcela",
+
   revisar: "Possível correspondência — revisar",
 
   conflito:

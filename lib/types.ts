@@ -8,6 +8,7 @@ export type IntegrationStatus =
   | "parcialmente_baixada"
   | "credito"
   | "nao_encontrado"
+  | "sugestao"
   | "revisar"
   | "conflito"
   | "erro";
@@ -89,6 +90,9 @@ export interface NormalizedCsvRow {
   valor: number | null;
   valorJuros?: number | null;
   jurosConfirmados?: number;
+  valorDesconto?: number;
+  descontoConfirmado?: number;
+  sugestoesValor?: ValueSuggestion[];
 
   /*
    * Tipo do movimento bancário:
@@ -197,4 +201,13 @@ export interface M8Parcela {
   complemento?: string;
 
   [key: string]: any;
+}
+
+export interface ValueSuggestion {
+  titulo: M8ContaPagar;
+  parcela: M8Parcela;
+  data: NonNullable<NormalizedCsvRow["correspondenciaData"]>;
+  principal: number;
+  juros: number;
+  desconto: number;
 }

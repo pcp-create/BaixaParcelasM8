@@ -36,7 +36,7 @@ select {
 ============================================================ */
 
 .container {
-  max-width: 1500px;
+  max-width: 1920px;
   margin: 0 auto;
   padding: 32px;
 }
@@ -822,9 +822,12 @@ th.right .sort-header span:first-child {
 }
 
 .message-cell {
-  max-width: 330px;
+  width: 30%;
+  min-width: 420px;
 
   color: #596a7d;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 
@@ -1638,3 +1641,13 @@ th.right .sort-header span:first-child {
 
 .adjustment-input { min-width: 100px; max-width: 140px; text-align: right; }
 .adjustment-input[aria-invalid="true"] { border-color: #b42318; }
+
+.status-sugestao { background: #fff7df; color: #805400; border: 1px solid #e8cd85; }
+.has-value-suggestions { cursor: pointer; }
+.has-value-suggestions:hover { background: #f0f6fd; }
+.suggestions-cell { padding: 16px; background: #edf4fc; }
+.value-suggestions p { margin: 8px 0 14px; color: #596a7d; }
+.suggestions-scroll { overflow-x: auto; }
+.value-suggestions table { min-width: 1000px; background: white; }
+.value-suggestions th { position: static; }
+.value-suggestions td { white-space: normal; }

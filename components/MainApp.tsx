@@ -2,6 +2,7 @@
 
 import {
   ChangeEvent,
+  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -19,8 +20,10 @@ import {
   parseCsv,
 } from "@/lib/csv";
 
-import AdjustmentInput from "./AdjustmentInput";
-import { amountForMatching, applyAdjustment } from "@/lib/amount-adjustment";
+import ValueSuggestions from "./ValueSuggestions";
+import { selectSuggestionInRows, clearValueSelection } from "@/lib/value-suggestions";
+
+import { amountForMatching } from "@/lib/amount-adjustment";
 
 import StatusBadge from "./StatusBadge";
 import BankConfigModal from "./BankConfigModal";
@@ -192,6 +195,8 @@ export default function MainApp() {
 
   const [dateReviewRow, setDateReviewRow] = useState<NormalizedCsvRow | null>(null);
 
+  const [expandedValueRows, setExpandedValueRows] = useState<Set<string>>(new Set());
+
   const [bankId, setBankId] =
     useState("viacredi");
 
@@ -325,6 +330,7 @@ export default function MainApp() {
     setProgress(INITIAL_PROGRESS);
     clearFilters();
     setDateReviewRow(null);
+    setExpandedValueRows(new Set());
   }, [bankId, company]);
 
   /* ==========================================================
@@ -693,6 +699,11 @@ export default function MainApp() {
           let valueB:
             any =
             b[sortKey];
+
+          if (sortKey === "valorJuros") {
+            valueA = (a.valorJuros ?? 0) + (a.valorDesconto ?? 0);
+            valueB = (b.valorJuros ?? 0) + (b.valorDesconto ?? 0);
+          }
 
           if (
             [
@@ -1230,6 +1241,7 @@ export default function MainApp() {
           return {
             ...r,
 
+            sugestoesValor: undefined,
             correspondenciaData: undefined,
             revisaoData: undefined,
             status:
@@ -2392,7 +2404,7 @@ export default function MainApp() {
                   className="right"
                 />
 
-                <SortHeader column="valorJuros" label="Valor juros (R$)" className="right" />
+                <SortHeader column="valorJuros" label="Juros / Desconto (R$)" className="right" />
 
                 <SortHeader
                   column="tituloId"
@@ -2519,7 +2531,7 @@ export default function MainApp() {
                   />
                 </th>
 
-                <th><span className="filter-placeholder">Juros inclusos</span></th>
+                <th><span className="filter-placeholder">Automático</span></th>
                 <th>
                   <input
                     className="column-filter"
@@ -2605,6 +2617,7 @@ export default function MainApp() {
                       Não encontrado
                     </option>
 
+                    <option value="sugestao">Selecionar parcela</option>
                     <option value="revisar">Possível correspondência — revisar</option>
                     <option value="conflito">
                       Conflito
@@ -2648,8 +2661,13 @@ export default function MainApp() {
                 displayedRows.map(
                   (r) => (
 
+                    <Fragment key={r.rowId}>
                     <tr
-                      key={r.rowId}
+                      className={r.sugestoesValor?.length ? "has-value-suggestions" : undefined}
+                      onClick={(event) => {
+                        if (!r.sugestoesValor?.length || (event.target as HTMLElement).closest("button,input,select,a")) return;
+                        setExpandedValueRows((current) => { const next = new Set(current); if (next.has(r.rowId)) next.delete(r.rowId); else next.add(r.rowId); return next; });
+                      }}
                     >
 
                       <td>
@@ -2698,10 +2716,8 @@ export default function MainApp() {
                       </td>
 
                       <td className="right">
-                        <AdjustmentInput value={r.valorJuros} rowNumber={r.numeroLinha}
-                          disabled={busy || r.jurosConfirmados !== undefined || ["baixada", "ja_baixada", "credito"].includes(r.status) || ehCredito(r.tipo)}
-                          onChange={(difference) => setRows((current) => current.map((row) => row.rowId === r.rowId ? applyAdjustment(row, difference) : row))}
-                        />
+                        <span>{money((r.valorDesconto ?? 0) > 0 ? r.valorDesconto : (r.valorJuros ?? 0))}</span>
+                        <small className="account-id-note">{(r.valorDesconto ?? 0) > 0 ? "Desconto" : (r.valorJuros ?? 0) > 0 ? "Juros" : "Sem ajuste"}</small>
                         <small className="account-id-note">Principal: {amountForMatching(r) === null ? "Valor inválido" : money(amountForMatching(r))}</small>
                       </td>
                       <td>
@@ -2770,6 +2786,8 @@ export default function MainApp() {
                       >
 
                         {r.statusMensagem}
+                        {r.parcelaId && ["pronto", "revisar"].includes(r.status) && <div><button type="button" className="link-button" disabled={busy} onClick={() => setRows((current) => current.map((row) => row.rowId === r.rowId ? clearValueSelection(row) : row))}>Remover seleção</button></div>}
+                        {!!r.sugestoesValor?.length && <div><button type="button" className="link-button" aria-expanded={expandedValueRows.has(r.rowId)} onClick={() => setExpandedValueRows((current) => { const next = new Set(current); if (next.has(r.rowId)) next.delete(r.rowId); else next.add(r.rowId); return next; })}>{expandedValueRows.has(r.rowId) ? "Ocultar" : "Ver"} {r.sugestoesValor.length} possíveis parcelas</button></div>}
                         {r.status === "revisar" && (
                           <div><button type="button" className="link-button" disabled={busy} onClick={() => setDateReviewRow(r)}>Revisar correspondência</button></div>
                         )}
@@ -2783,6 +2801,10 @@ export default function MainApp() {
                       </td>
 
                     </tr>
+                    {expandedValueRows.has(r.rowId) && !!r.sugestoesValor?.length && <tr><td colSpan={11} className="suggestions-cell">
+                      <ValueSuggestions row={r} rows={rows} disabled={busy} onSelect={(suggestion) => setRows((current) => selectSuggestionInRows(current, r.rowId, suggestion, company, bankId))} />
+                    </td></tr>}
+                    </Fragment>
 
                   )
                 )
@@ -2828,7 +2850,7 @@ export default function MainApp() {
               <div><dt>Fornecedor no M8</dt><dd>{dateReviewRow.fornecedorNome || "—"}</dd></div>
               <div><dt>Título / Parcela M8</dt><dd>{dateReviewRow.tituloId} / {dateReviewRow.parcelaId}</dd></div>
               <div><dt>Documento no extrato / M8</dt><dd>{dateReviewRow.documento || "—"} / {String(dateReviewRow.tituloM8?.documento || "—")}</dd></div>
-              <div><dt>Extrato − Juros / Parcela</dt><dd>{money(dateReviewRow.valor)} − {money(dateReviewRow.valorJuros ?? 0)} = {money(amountForMatching(dateReviewRow))} / {money(dateReviewRow.parcelaValor)}</dd></div>
+              <div><dt>Extrato − Juros + Desconto / Parcela</dt><dd>{money(dateReviewRow.valor)} − {money(dateReviewRow.valorJuros ?? 0)} + {money(dateReviewRow.valorDesconto ?? 0)} = {money(amountForMatching(dateReviewRow))} / {money(dateReviewRow.parcelaValor)}</dd></div>
               <div><dt>Vencimento M8 / Pagamento</dt><dd>{dateBr(dateReviewRow.correspondenciaData?.vencimento || "")} / {dateBr(dateReviewRow.dataPagamento)}</dd></div>
             </dl>
             <p>{dateReviewRow.correspondenciaData?.motivo}</p>

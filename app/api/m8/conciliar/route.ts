@@ -7,6 +7,7 @@ import {
 } from "@/lib/m8";
 
 import {
+  ValueSuggestion,
   M8ContaPagar,
   M8Parcela,
   NormalizedCsvRow,
@@ -1029,32 +1030,11 @@ export async function POST(request: Request) {
               titulos
             );
 
-          /* ==================================================
-             NENHUM TÍTULO
-          ================================================== */
-
-          if (!titulosFornecedor.length) {
-            enviar({
-              type: "progress",
-              operation: "conciliacao",
-              current: atual,
-              total: rows.length,
-              label: row.cliente,
-
-              result: {
-                rowId: row.rowId,
-
-                status: "nao_encontrado",
-
-                statusMensagem:
-                  modoConciliacao === "pendentes"
-                    ? "Nenhum título pendente compatível foi localizado. Se o pagamento já tiver sido processado, utilize “Verificar todos os títulos”."
-                    : "Nenhum título compatível foi localizado no M8 por Fornecedor ou Complemento.",
-              },
-            });
-
-            continue;
-          }
+          // A busca na parcela é alternativa quando o título não identifica o fornecedor.
+          const buscarNoComplementoParcela = titulosFornecedor.length === 0;
+          const titulosParaConsultar = buscarNoComplementoParcela
+            ? (palavrasRelevantesCsv(row.cliente).length ? titulos : [])
+            : titulosFornecedor;
 
           /* ==================================================
              CONSULTAR PARCELAS
@@ -1066,12 +1046,13 @@ export async function POST(request: Request) {
             data: DateMatch;
           }> = [];
 
+          const sugestoesValor: ValueSuggestion[] = [];
           const errosConsultaParcelas:
             string[] = [];
 
           for (
             const titulo
-            of titulosFornecedor
+            of titulosParaConsultar
           ) {
             let parcelas =
               parcelasCache.get(
@@ -1126,13 +1107,19 @@ export async function POST(request: Request) {
               }
             }
 
-            const parcelasCompativeis =
-              encontrarParcelasCompativeis(
-                row,
-                parcelas,
-                calendar,
-                tolerance
-              );
+            const parcelasDoFornecedor = buscarNoComplementoParcela
+              ? parcelas.filter((parcela) => clienteCompativelComplemento(row.cliente, parcela.complemento))
+              : parcelas;
+            const parcelasCompativeis = encontrarParcelasCompativeis(row, parcelasDoFornecedor, calendar, tolerance);
+            for (const parcela of parcelasDoFornecedor) {
+              const data = matchDates(parcela.vencimento, row.dataPagamento, calendar, tolerance);
+              const principal = normalizarValor(parcela.valor);
+              if (!data || situacaoParcela(parcela) !== "aberta" || principal <= 0 ||
+                  typeof row.valor !== "number" || !Number.isFinite(row.valor) || row.valor <= 0 ||
+                  mesmoValor(principal, amountForMatching(row))) continue;
+              const delta = Math.round(row.valor * 100) - Math.round(principal * 100);
+              sugestoesValor.push({titulo, parcela, data, principal, juros: Math.max(delta, 0) / 100, desconto: Math.max(-delta, 0) / 100});
+            }
 
             for (
               const candidate
@@ -1188,6 +1175,14 @@ export async function POST(request: Request) {
              NENHUMA PARCELA
           ================================================== */
 
+          if (!correspondencias.length && sugestoesValor.length) {
+            enviar({ type: "progress", operation: "conciliacao", current: atual, total: rows.length, label: row.cliente,
+              result: { rowId: row.rowId, status: "sugestao", sugestoesValor,
+                statusMensagem: `${sugestoesValor.length} parcela(s) com identificação e datas compatíveis, mas valor diferente. Expanda a linha e selecione a parcela para calcular juros ou desconto.` }
+            });
+            continue;
+          }
+
           if (!correspondencias.length) {
             enviar({
               type: "progress",
@@ -1202,7 +1197,9 @@ export async function POST(request: Request) {
                 status: "nao_encontrado",
 
                 statusMensagem:
-                  modoConciliacao === "pendentes"
+                  buscarNoComplementoParcela
+                    ? `Nenhuma correspondência por fornecedor ou complemento do título; consultados ${titulosParaConsultar.length} título(s), sem parcela compatível por complemento, valor e datas.`
+                    : modoConciliacao === "pendentes"
                     ? `${titulosFornecedor.length} título(s) pendente(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu ao valor e à regra de datas (exata, próximo dia útil ou tolerância de ${tolerance} dias). Caso já tenha sido processada, tente “Verificar todos os títulos”.`
                     : `${titulosFornecedor.length} título(s) compatível(is) localizado(s), porém nenhuma parcela correspondeu ao valor e à regra de datas (exata, próximo dia útil ou tolerância de ${tolerance} dias).`,
               },
@@ -1241,6 +1238,7 @@ export async function POST(request: Request) {
           ================================================== */
 
           const match = correspondencias[0];
+          const origemMensagem = buscarNoComplementoParcela ? "Identificado pelo complemento da parcela. " : "";
 
           const titulo = match.titulo;
           const parcela = match.parcela;
@@ -1263,6 +1261,7 @@ export async function POST(request: Request) {
                 rowId: row.rowId,
                 correspondenciaData: match.data,
                 jurosConfirmados: row.valorJuros ?? 0,
+                descontoConfirmado: row.valorDesconto ?? 0,
 
                 status: "ja_baixada",
 
@@ -1309,6 +1308,7 @@ export async function POST(request: Request) {
                 rowId: row.rowId,
                 correspondenciaData: match.data,
                 jurosConfirmados: row.valorJuros ?? 0,
+                descontoConfirmado: row.valorDesconto ?? 0,
 
                 status:
                   "parcialmente_baixada",
@@ -1363,9 +1363,10 @@ export async function POST(request: Request) {
               status: match.data.tipo === "proximidade" ? "revisar" : "pronto",
               correspondenciaData: match.data,
                 jurosConfirmados: row.valorJuros ?? 0,
+                descontoConfirmado: row.valorDesconto ?? 0,
               statusMensagem: match.data.tipo === "proximidade"
-                ? match.data.motivo
-                : `Título e parcela encontrados. ${match.data.motivo} Parcela disponível para baixa.`,
+                ? `${origemMensagem}${match.data.motivo}`
+                : `${origemMensagem}Título e parcela encontrados. ${match.data.motivo} Parcela disponível para baixa.`,
 
               tituloId:
                 titulo.id,

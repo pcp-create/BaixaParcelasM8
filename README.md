@@ -98,19 +98,28 @@ Antes de baixar, preencha:
 
 O sistema bloqueia a ETAPA 4 enquanto os três IDs obrigatórios estiverem zerados.
 
-## Juros por item
+## Juros e descontos automáticos
 
-A coluna **Valor juros (R$)**, entre **Valor do extrato** e **Título M8**, permite informar os juros já incluídos no extrato. O padrão é zero; valores negativos e mais de duas casas decimais não são aceitos.
+A coluna **Juros / Desconto (R$)**, entre **Valor do extrato** e **Título M8**, exibe somente o ajuste calculado ao selecionar uma parcela sugerida. Não há edição manual. A indicação abaixo do valor informa **Juros**, **Desconto** ou **Sem ajuste**, seguida do principal usado na conciliação.
 
-A conciliação compara **Valor do extrato − Valor juros = Valor da parcela M8**. Exemplo: extrato de R$ 105,00 e juros de R$ 5,00 correspondem a um principal de R$ 100,00. O principal precisa ser maior que zero.
+A baixa envia o principal em `valor` e o ajuste em `valorJuros` ou `valorDesconto`, preservando o total e a data do pagamento do extrato.
 
-Ao encontrar uma correspondência, os juros ficam travados, inclusive durante a revisão por proximidade de datas. Para corrigir juros de uma linha conciliada, importe o extrato novamente. Créditos e parcelas já baixadas não permitem edição.
+## Sugestões de parcelas com valor diferente
 
-Na baixa, o POST envia **valor = principal** e **valorJuros = juros informados**. No exemplo, `valor: 100` e `valorJuros: 5`. O backend confere os juros confirmados na conciliação e a correspondência do principal com a parcela antes de enviar a baixa. O valor original do extrato e sua data de pagamento são preservados.
+Quando nenhuma parcela corresponde ao valor ajustado, a conciliação apresenta **Selecionar parcela** se existirem parcelas com identificação e datas compatíveis. Clique na linha do extrato ou em **Ver possíveis parcelas** para expandir as opções abaixo dela.
+
+Cada opção mostra título/parcela, fornecedor, documento, complementos, vencimento, motivo da compatibilidade de data, principal, juros e desconto estimados. Nenhuma opção é selecionada automaticamente, mesmo quando existe apenas uma. A seleção confirma a correspondência (incluindo eventual proximidade de datas) e libera a parcela para a etapa de baixa, sem executar a baixa naquele momento.
+
+- Extrato maior que a parcela: **juros = extrato − principal**. Exemplo: R$ 105 pagos para R$ 100 de principal → `valor: 100`, `valorJuros: 5`, `valorDesconto: 0`.
+- Extrato menor que a parcela: **desconto = principal − extrato**. Exemplo: R$ 95 pagos para R$ 100 de principal → `valor: 100`, `valorJuros: 0`, `valorDesconto: 5`.
+
+O valor original do extrato é preservado. A coluna **Juros / Desconto (R$)** mostra o valor calculado e identifica o tipo do ajuste. Ambos ficam vinculados à seleção e são conferidos pela API antes da baixa. É possível escolher outra opção antes de baixar ou clicar em **Remover seleção**. A remoção limpa a correspondência, a aprovação, os juros e o desconto calculados, preservando as sugestões. Uma parcela já vinculada a outra linha fica desabilitada com a indicação **Vinculada à linha X**; remover ou trocar a seleção libera a opção anterior. O bloqueio considera todas as linhas importadas, mesmo as ocultas por filtros. Parcelas já baixadas permanecem vinculadas e não permitem remover a seleção. A API recusa um lote com o mesmo título/parcela repetido antes de autenticar ou enviar qualquer baixa. A fórmula do principal passa a ser **extrato − juros + desconto**.
+
+Somente parcelas em aberto, sem baixa parcial, são oferecidas nessa lista. Correspondências exatas de valor continuam tendo prioridade; conflitos entre essas correspondências mantêm o comportamento anterior. Falhas de consulta impedem apresentar uma lista como concluída. O filtro de status inclui **Selecionar parcela**.
 
 ## Regra de conciliação
 
-Os títulos candidatos continuam sendo localizados pelo fornecedor ou complemento. As parcelas precisam ter o mesmo valor de **Valor do extrato − Valor juros**, com tolerância de R$ 0,01. Para as datas:
+Os títulos candidatos são localizados pelo fornecedor ou complemento do título. Quando nenhum título corresponde por esses campos, o sistema consulta as parcelas dos títulos do modo selecionado e procura as palavras relevantes do extrato no **complemento de cada parcela**. Somente as parcelas cujo próprio complemento corresponde seguem para validação de valor e datas. As consultas usam cache por título durante a conciliação; uma consulta incompleta impede liberar a linha. As parcelas precisam ter o mesmo valor de **Valor do extrato − Valor juros + Valor desconto**, com tolerância de R$ 0,01. Para as datas:
 
 1. Vencimento e pagamento iguais: correspondência exata.
 2. Vencimento em sábado, domingo ou feriado cadastrado: aceita o pagamento no próximo dia útil.

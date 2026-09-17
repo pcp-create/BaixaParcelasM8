@@ -132,7 +132,7 @@ test('juros são subtraídos do extrato para localizar o principal', async () =>
     assert.equal(result.parcelaValor,100);
     assert.equal(row.valor,valor);
   }
-  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,valor:105,valorJuros:0})).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,valor:105,valorJuros:0})).status,'sugestao');
 });
 test('juros aceitam vírgula, rejeitam negativos e ficam travados após conciliação', () => {
   assert.equal(adjustments.parseAdjustment('5,25'),5.25);
@@ -164,7 +164,123 @@ test('baixa envia principal e juros separados e bloqueia juros modificados', asy
   assert.equal(calls[0][3].valor,100);
   assert.equal(calls[0][3].valorJuros,5);
   assert.equal(calls[0][3].valor + calls[0][3].valorJuros,105);
-  assert.match(await (await route.POST(request({...row,valorJuros:4}))).text(),/juros ou valor principal alterados/);
+  assert.match(await (await route.POST(request({...row,valorJuros:4}))).text(),/juros, desconto ou valor principal alterados/);
   assert.equal(calls.length,1);
   assert.equal(authentications,1);
+});
+
+test('busca no complemento da própria parcela quando o título não identifica o fornecedor', async () => {
+  const options={titles:[{id:1,fornecedorNome:'OUTRA EMPRESA',saldo:100}]};
+  const matched=await reconcile([parcel('2026-09-17',{complemento:'Pagamento fornecedor exemplo'})],baseRow,options);
+  assert.equal(matched.status,'pronto');
+  assert.match(matched.statusMensagem,/complemento da parcela/);
+  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'Pagamento fornecedor exemplo',valor:200}),parcel('2026-09-17',{id:12,complemento:'Sem identificação'})],baseRow,options)).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-15',{complemento:'Fornecedor exemplo'})],baseRow,options)).status,'revisar');
+  assert.equal((await reconcile([parcel('2026-09-01',{complemento:'Fornecedor exemplo'})],baseRow,options)).status,'nao_encontrado');
+});
+
+test('busca por complemento da parcela mantém conflitos e erros de consulta', async () => {
+  const options={titles:[{id:1,fornecedorNome:'OUTRA EMPRESA',saldo:100}]};
+  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'Fornecedor exemplo'}),parcel('2026-09-17',{id:12,complemento:'Fornecedor exemplo'})],baseRow,options)).status,'conflito');
+  assert.equal((await reconcile([],baseRow,{...options,failId:1})).status,'erro');
+  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'PAGAMENTO PIX BANCO'})],{...baseRow,cliente:'PIX BANCO'},options)).status,'nao_encontrado');
+});
+
+const {selectValueSuggestion} = load('lib/value-suggestions.ts');
+test('sugere duas parcelas, calcula juros/desconto e aguarda seleção explícita', async () => {
+  const row={...baseRow,valor:105};
+  const result=await reconcile([parcel('2026-09-17'),parcel('2026-09-15',{id:12,valor:120,saldo:120})],row);
+  assert.equal(result.status,'sugestao');
+  assert.equal(result.parcelaId,undefined);
+  assert.equal(result.sugestoesValor.length,2);
+  assert.deepEqual(result.sugestoesValor.map(s=>[s.juros,s.desconto]),[[5,0],[0,15]]);
+  const selected=selectValueSuggestion({...row,...result},result.sugestoesValor[1],1,'sicredi');
+  assert.equal(selected.status,'pronto');
+  assert.equal(selected.parcelaId,12);
+  assert.equal(selected.valorJuros,0);
+  assert.equal(selected.valorDesconto,15);
+  assert.equal(selected.descontoConfirmado,15);
+  assert.equal(adjustments.amountForMatching(selected),120);
+  assert.equal(dates.validDateReview(selected,1,'sicredi'),true);
+  assert.equal(adjustments.applyAdjustment(selected,1),selected);
+});
+test('valor exato tem prioridade e sugestões não incluem baixadas, parciais ou datas incompatíveis', async () => {
+  const exact=await reconcile([parcel('2026-09-17'),parcel('2026-09-17',{id:12,valor:120,saldo:120})]);
+  assert.equal(exact.status,'pronto');
+  assert.equal(exact.sugestoesValor,undefined);
+  const none=await reconcile([
+    parcel('2026-09-17',{valor:120,saldo:0}),
+    parcel('2026-09-17',{id:12,valor:120,saldo:60}),
+    parcel('2026-09-01',{id:13,valor:120,saldo:120}),
+  ]);
+  assert.equal(none.status,'nao_encontrado');
+});
+test('seleção envia principal, juros ou desconto no POST e mantém o total pago', async () => {
+  const calls=[];
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
+    autenticarM8:async()=> 'mock',baixarParcela:async(...args)=>{calls.push(args);return {ok:true};},
+  }});
+  for(const principal of [100,120]) {
+    const row={...baseRow,valor:105};
+    const result=await reconcile([parcel('2026-09-17',{valor:principal,saldo:principal})],row);
+    const selected=selectValueSuggestion({...row,...result},result.sugestoesValor[0],1,'sicredi');
+    const request=(r)=>new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows:[r],config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4,observacaoInterna:'',complemento:''}})});
+    assert.match(await (await route.POST(request({...row,...result}))).text(),/alterados|não aprovada/);
+    assert.match(await (await route.POST(request(selected))).text(),/"status":"baixada"/);
+    const payload=calls.at(-1)[3];
+    assert.equal(payload.valor,principal);
+    assert.equal(payload.valor + payload.valorJuros - payload.valorDesconto,105);
+    assert.equal(payload.valorJuros,principal===100?5:0);
+    assert.equal(payload.valorDesconto,principal===120?15:0);
+    const before=calls.length;
+    assert.match(await (await route.POST(request({...selected,valorDesconto:16}))).text(),/alterados/);
+    assert.equal(calls.length,before);
+  }
+});
+
+const {selectionOwner,selectSuggestionInRows,clearValueSelection} = load('lib/value-suggestions.ts');
+test('reserva a parcela em uma linha, bloqueia outra e libera ao remover a seleção', async () => {
+  const result=await reconcile([parcel('2026-09-17')],{...baseRow,valor:105});
+  const first={...baseRow,...result,valor:105};
+  const second={...first,rowId:'row-2',numeroLinha:3};
+  const option=result.sugestoesValor[0];
+  let rows=selectSuggestionInRows([first,second],first.rowId,option,1,'sicredi');
+  assert.equal(rows[0].status,'pronto');
+  assert.equal(selectionOwner(rows,second.rowId,1,11).rowId,first.rowId);
+  assert.equal(selectSuggestionInRows(rows,second.rowId,option,1,'sicredi'),rows);
+  rows=rows.map(row=>row.rowId===first.rowId?clearValueSelection(row):row);
+  assert.equal(rows[0].status,'sugestao');
+  assert.equal(rows[0].tituloId,undefined);
+  assert.equal(rows[0].parcelaId,undefined);
+  assert.equal(rows[0].valorJuros,0);
+  assert.equal(rows[0].valorDesconto,0);
+  assert.equal(rows[0].jurosConfirmados,undefined);
+  assert.equal(rows[0].revisaoData,undefined);
+  assert.equal(rows[0].sugestoesValor.length,1);
+  rows=selectSuggestionInRows(rows,second.rowId,option,1,'sicredi');
+  assert.equal(rows[1].status,'pronto');
+  assert.equal(rows[1].valorJuros,5);
+  const paid={...rows[1],status:'baixada'};
+  assert.equal(clearValueSelection(paid),paid);
+  assert.equal(selectionOwner([rows[0],paid],first.rowId,1,11).rowId,second.rowId);
+});
+test('trocar opção libera a parcela anterior sem bloquear a própria seleção', async () => {
+  const result=await reconcile([parcel('2026-09-17'),parcel('2026-09-17',{id:12,valor:120,saldo:120})],{...baseRow,valor:105});
+  let rows=[{...baseRow,...result,valor:105}];
+  rows=selectSuggestionInRows(rows,baseRow.rowId,result.sugestoesValor[0],1,'sicredi');
+  rows=selectSuggestionInRows(rows,baseRow.rowId,result.sugestoesValor[1],1,'sicredi');
+  assert.equal(rows[0].parcelaId,12);
+  assert.equal(rows[0].valorDesconto,15);
+  assert.equal(selectionOwner(rows,'another',1,11),undefined);
+});
+test('API rejeita lote com parcela duplicada antes de autenticar ou baixar', async () => {
+  let authenticated=0, lowered=0;
+  const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
+    autenticarM8:async()=>{authenticated++;return 'mock';},baixarParcela:async()=>{lowered++;return {ok:true};},
+  }});
+  const row=reviewedRow();
+  const response=await route.POST(new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows:[row,{...row,rowId:'row-2',numeroLinha:3}],config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4}})}));
+  assert.match(await response.text(),/selecionada nas linhas 2 e 3/);
+  assert.equal(authenticated,0);
+  assert.equal(lowered,0);
 });

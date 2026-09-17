@@ -283,12 +283,19 @@ export async function POST(
           const bankId = String(body?.bankId ?? "");
           // Valida todo o lote antes de autenticar ou efetuar qualquer baixa.
           if (Array.isArray(rows)) {
+            const parcelasNoLote = new Map<string, number>();
             for (const row of rows) {
               if (ehCredito(row)) continue;
+              const chaveParcela = `${row.tituloId}:${row.parcelaId}`;
+              if (parcelasNoLote.has(chaveParcela)) {
+                throw new Error(`Parcela ${row.parcelaId} do título ${row.tituloId} selecionada nas linhas ${parcelasNoLote.get(chaveParcela)} e ${row.numeroLinha}. Remova uma das seleções antes da baixa.`);
+              }
+              parcelasNoLote.set(chaveParcela, row.numeroLinha);
               const principal = amountForMatching(row);
               if (principal === null || row.jurosConfirmados !== (row.valorJuros ?? 0) ||
+                  (row.descontoConfirmado ?? 0) !== (row.valorDesconto ?? 0) ||
                   Math.abs(principal - normalizarValor(row.parcelaM8?.valor)) > 0.0100001) {
-                throw new Error(`Linha ${row.numeroLinha}: juros ou valor principal alterados após a conciliação. Importe e concilie novamente.`);
+                throw new Error(`Linha ${row.numeroLinha}: juros, desconto ou valor principal alterados após a conciliação. Importe e concilie novamente.`);
               }
               const dateMatch = matchDates(row.parcelaM8?.vencimento, row.dataPagamento, calendarForCompany(company), toleranceForBank(bankId));
               if (row.status !== "pronto" || !dateMatch ||
@@ -672,6 +679,7 @@ export async function POST(
 
               const valor = amountForMatching(row)!;
               const valorJuros = row.valorJuros ?? 0;
+              const valorDesconto = row.valorDesconto ?? 0;
 
               if (
                 !Number.isFinite(
@@ -774,8 +782,7 @@ export async function POST(
                 valorMulta:
                   0,
 
-                valorDesconto:
-                  0,
+                valorDesconto,
 
                 taxaOperadoraCartao:
                   0,
