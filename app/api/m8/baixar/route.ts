@@ -677,9 +677,10 @@ export async function POST(
                  VALIDAR VALOR
               =============================================== */
 
-              const valor = amountForMatching(row)!;
               const valorJuros = row.valorJuros ?? 0;
               const valorDesconto = row.valorDesconto ?? 0;
+              // Com desconto, o M8 recebe o pagamento líquido e o desconto separados.
+              const valor = valorDesconto > 0 ? row.valor! : amountForMatching(row)!;
 
               if (
                 !Number.isFinite(
@@ -769,13 +770,13 @@ export async function POST(
                 meioPagamentoId,
 
                 /*
-                 * Valor da linha do CSV.
+                 * Valor pago para descontos; principal nos demais casos.
                  */
                 valor,
 
                 /*
                  * Juros informados e confirmados na conciliação.
-                 * Multa e desconto continuam zerados.
+                 * Desconto confirmado enviado separadamente; multa permanece zerada.
                  */
                 valorJuros,
 

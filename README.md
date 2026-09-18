@@ -102,7 +102,7 @@ O sistema bloqueia a ETAPA 4 enquanto os três IDs obrigatórios estiverem zerad
 
 A coluna **Juros / Desconto (R$)**, entre **Valor do extrato** e **Título M8**, exibe somente o ajuste calculado ao selecionar uma parcela sugerida. Não há edição manual. A indicação abaixo do valor informa **Juros**, **Desconto** ou **Sem ajuste**, seguida do principal usado na conciliação.
 
-A baixa envia o principal em `valor` e o ajuste em `valorJuros` ou `valorDesconto`, preservando o total e a data do pagamento do extrato.
+Na baixa com desconto, `valor` recebe o valor pago no extrato e `valorDesconto` recebe o desconto confirmado. Nos demais casos, `valor` recebe o principal e `valorJuros` recebe os juros confirmados. A data permanece a do pagamento no extrato.
 
 ## Sugestões de parcelas com valor diferente
 
@@ -111,7 +111,7 @@ Quando nenhuma parcela corresponde ao valor ajustado, a conciliação apresenta 
 Cada opção mostra título/parcela, fornecedor, documento, complementos, vencimento, motivo da compatibilidade de data, principal, juros e desconto estimados. Nenhuma opção é selecionada automaticamente, mesmo quando existe apenas uma. A seleção confirma a correspondência (incluindo eventual proximidade de datas) e libera a parcela para a etapa de baixa, sem executar a baixa naquele momento.
 
 - Extrato maior que a parcela: **juros = extrato − principal**. Exemplo: R$ 105 pagos para R$ 100 de principal → `valor: 100`, `valorJuros: 5`, `valorDesconto: 0`.
-- Extrato menor que a parcela: **desconto = principal − extrato**. Exemplo: R$ 95 pagos para R$ 100 de principal → `valor: 100`, `valorJuros: 0`, `valorDesconto: 5`.
+- Extrato menor que a parcela: **desconto = principal − extrato**. Exemplo: R$ 95 pagos para R$ 100 de principal → `valor: 95`, `valorJuros: 0`, `valorDesconto: 5`.
 
 O valor original do extrato é preservado. A coluna **Juros / Desconto (R$)** mostra o valor calculado e identifica o tipo do ajuste. Ambos ficam vinculados à seleção e são conferidos pela API antes da baixa. É possível escolher outra opção antes de baixar ou clicar em **Remover seleção**. A remoção limpa a correspondência, a aprovação, os juros e o desconto calculados, preservando as sugestões. Uma parcela já vinculada a outra linha fica desabilitada com a indicação **Vinculada à linha X**; remover ou trocar a seleção libera a opção anterior. O bloqueio considera todas as linhas importadas, mesmo as ocultas por filtros. Parcelas já baixadas permanecem vinculadas e não permitem remover a seleção. A API recusa um lote com o mesmo título/parcela repetido antes de autenticar ou enviar qualquer baixa. A fórmula do principal passa a ser **extrato − juros + desconto**.
 

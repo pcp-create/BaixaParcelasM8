@@ -233,7 +233,7 @@ test('valor exato tem prioridade e sugestões não incluem baixadas, parciais ou
   ]);
   assert.equal(none.status,'nao_encontrado');
 });
-test('seleção envia principal, juros ou desconto no POST e mantém o total pago', async () => {
+test('baixa envia valor pago com desconto e principal com juros', async () => {
   const calls=[];
   const route=load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
     autenticarM8:async()=> 'mock',baixarParcela:async(...args)=>{calls.push(args);return {ok:true};},
@@ -246,8 +246,12 @@ test('seleção envia principal, juros ou desconto no POST e mantém o total pag
     assert.match(await (await route.POST(request({...row,...result}))).text(),/alterados|não aprovada/);
     assert.match(await (await route.POST(request(selected))).text(),/"status":"baixada"/);
     const payload=calls.at(-1)[3];
-    assert.equal(payload.valor,principal);
-    assert.equal(payload.valor + payload.valorJuros - payload.valorDesconto,105);
+    assert.equal(payload.valor,principal===120?105:100);
+    if (principal===120) {
+      assert.equal(payload.valor + payload.valorDesconto,principal);
+    } else {
+      assert.equal(payload.valor + payload.valorJuros,105);
+    }
     assert.equal(payload.valorJuros,principal===100?5:0);
     assert.equal(payload.valorDesconto,principal===120?15:0);
     const before=calls.length;
