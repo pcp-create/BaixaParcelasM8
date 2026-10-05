@@ -314,8 +314,8 @@ test('sugere parcela identificada apenas no complemento mesmo havendo outro tít
     parcelsByTitle:{32545:[parcel('2026-09-15',{id:44865,valor:5291.87,saldo:5291.87})],1543:[parcel('2026-09-15',{id:2041,valor:7081.35,saldo:7081.35,complemento:'DEB.PARC.BNDES AUTOMA'}),parcel('2026-09-15',{id:2042,complemento:'OUTRO CLIENTE'})]},
   });
   assert.equal(result.status,'sugestao');
-  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[2041]);
-  assert.equal(result.sugestoesValor[0].juros,4057.87);
+  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[44865,2041]);
+  assert.equal(result.sugestoesValor[1].juros,4057.87);
 });
 
 test('antecipação no mês gera sugestão e baixa exige aprovação vinculada às datas', async () => {
@@ -371,7 +371,7 @@ test('sugestões exigem CLIENTE completo no complemento do título ou da própri
   assert.equal((await reconcile([parcel('2026-09-17')],row,options(full))).status,'sugestao');
   const result=await reconcile([parcel('2026-09-17',{complemento:full}),parcel('2026-09-17',{id:12,complemento:'DISK AMP'})],row,options(''));
   assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11]);
-  assert.equal((await reconcile([parcel('2026-09-17')],row,options(row.cliente+'A'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],row,options(row.cliente+'A'))).status,'sugestao');
   // fornecedorNome sozinho não substitui pessoaNome na regra atual.
   assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'nao_encontrado');
 });
@@ -436,10 +436,10 @@ test('remove somente o prefixo anterior ao primeiro separador nos complementos',
   const row={...baseRow,cliente:'PREFIXO - CD PROPAGANDA - FILIAL',valor:105};
   assert.equal((await reconcile([parcel('2026-09-17')],row,options('CD PROPAGANDA - FILIAL'))).status,'sugestao');
   for (const complemento of ['CD PROPAGANDA','FILIAL','PREFIXO']) {
-    assert.equal((await reconcile([parcel('2026-09-17')],row,options(complemento))).status,'nao_encontrado');
+    assert.equal((await reconcile([parcel('2026-09-17')],row,options(complemento))).status,complemento==='PREFIXO'?'nao_encontrado':'sugestao');
   }
   assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'PREFIXO - '},options('PREFIXO'))).status,'nao_encontrado');
-  assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'CD-PROPAGANDA'},options('PROPAGANDA'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'CD-PROPAGANDA'},options('PROPAGANDA'))).status,'sugestao');
   assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,cliente:'PREFIXO NOVO - CD PROPAGANDA'},options('PREFIXO NOVO'))).status,'nao_encontrado');
 });
 
@@ -459,4 +459,18 @@ test('identificação segue pessoaNome, complemento do título e complemento da 
   assert.match(byParcel.statusMensagem,/complemento da parcela/);
   assert.equal((await run(title,{...item,pessoaNome:'ABCD PROPAGANDA',complemento:'CD'})).status,'nao_encontrado');
   assert.equal((await reconcile([item],{...row,cliente:'CD PROPAGANDA'},{titles:[title]})).status,'pronto');
+});
+
+
+test('complemento do título aceita palavra relevante inteira; parcela exige nome completo', async () => {
+  const row={...baseRow,cliente:'PG.P/INTERNET - CD PROPAGANDA LTDA',valor:105};
+  const options=complemento=>({titles:[{id:1,pessoaNome:'OUTRO',complemento,saldo:100}]});
+  for (const texto of ['SERVIÇO CD','ADESIVOS DE PROPAGANDA','propagánda para manutenção']) {
+    assert.equal((await reconcile([parcel('2026-09-17')],row,options(texto))).status,'sugestao');
+    assert.equal((await reconcile([parcel('2026-09-17',{complemento:texto})],row,options(''))).status,'nao_encontrado');
+  }
+  for (const texto of ['ABCD PROPAGANDAS','LTDA','PG INTERNET']) {
+    assert.equal((await reconcile([parcel('2026-09-17')],row,options(texto))).status,'nao_encontrado');
+  }
+  assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'AMP'},options('PRONAMPE'))).status,'nao_encontrado');
 });

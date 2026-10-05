@@ -322,6 +322,13 @@ function clienteCompletoNoComplemento(clienteCsv: string, complementoM8: unknown
   return Boolean(cliente && complemento && ` ${complemento} `.includes(` ${cliente} `));
 }
 
+function clienteParcialNoComplementoTitulo(clienteCsv: string, complementoM8: unknown): boolean {
+  const palavras = normalizarTexto(clienteSemPrefixoBanco(clienteCsv)).split(" ")
+    .filter(palavra => palavra.length >= 2 && !PALAVRAS_IGNORADAS.has(palavra));
+  const complemento = new Set(normalizarTexto(complementoM8).split(" "));
+  return palavras.some(palavra => complemento.has(palavra));
+}
+
 function origemIdentificacao(clienteCsv: string, titulo: M8ContaPagar, parcela?: M8Parcela): string | null {
   const cliente = normalizarTexto(clienteSemPrefixoBanco(clienteCsv));
   if (!cliente) return null;
@@ -329,7 +336,7 @@ function origemIdentificacao(clienteCsv: string, titulo: M8ContaPagar, parcela?:
   // Compara palavras inteiras: AMP não identifica PRONAMPE.
   if ([parcela?.pessoaNome, titulo.pessoaNome].some(nome =>
     ` ${normalizarTexto(nome)} `.includes(` ${primeiraPalavra} `))) return "pessoaNome";
-  if (clienteCompletoNoComplemento(clienteCsv, titulo.complemento)) return "complemento do título";
+  if (clienteParcialNoComplementoTitulo(clienteCsv, titulo.complemento)) return "complemento do título";
   if (clienteCompletoNoComplemento(clienteCsv, parcela?.complemento)) return "complemento da parcela";
   return null;
 }
