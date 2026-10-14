@@ -9,7 +9,7 @@ function load(relative, mocks = {}) {
   const m = new Module(filename, module);
   m.filename = filename; m.paths = module.paths;
   const original = m.require.bind(m);
-  m.require = (id) => Object.hasOwn(mocks, id) ? mocks[id] : original(id);
+  m.require = (id) => Object.hasOwn(mocks, id) ? mocks[id] : id.startsWith("@/lib/") ? load(id.replace("@/", "") + ".ts") : original(id);
   m._compile(ts.transpileModule(readFileSync(filename, 'utf8'), {compilerOptions:{ module:ts.ModuleKind.CommonJS, esModuleInterop:true, target:ts.ScriptTarget.ES2020 }}).outputText, filename);
   return m.exports;
 }
@@ -351,6 +351,7 @@ test('consulta de títulos envia período no endpoint documentado e rejeita reto
   let payload = {data:[{id:1543,saldo:7081.35,complemento:'BNDES'}],errors:[]};
   t.mock.method(globalThis,'fetch',async url=>{
     const parsed=new URL(url);
+    if (parsed.pathname === '/v1/financeiro/contapagar') return new Response(JSON.stringify({data:[{id:1543,complemento:'BNDES'}]}));
     assert.equal(parsed.pathname,'/v1/financeiro/contapagar/consulta');
     assert.equal(parsed.searchParams.get('VencimentoInicial'),'2026-09-01T00:00:00');
     assert.equal(parsed.searchParams.get('VencimentoFinal'),'2026-09-30T23:59:59.999');
@@ -385,6 +386,7 @@ test('usa tituloId da consulta na URL de parcelas e no resultado da conciliaçã
     if(pathname.endsWith('/consulta')) return new Response(JSON.stringify({data:[{
       id:99999,tituloId:1543,pessoaNome:'OUTRA EMPRESA',saldo:0,
     },{id:99998,tituloId:1543,saldo:100},{id:null,tituloId:0,adiantamento:true}]}));
+    if (pathname === '/v1/financeiro/contapagar') return new Response(JSON.stringify({data:[{id:1543,complemento:'Dados do título',saldo:999},{id:777,complemento:'Fora do período',saldo:100}]}));
     assert.equal(pathname,'/v1/financeiro/contapagar/1543/parcela');
     return new Response(JSON.stringify({data:[parcel('2026-09-17',{
       id:2041,tituloId:1543,complemento:'FORNECEDOR EXEMPLO',
@@ -397,11 +399,11 @@ test('usa tituloId da consulta na URL de parcelas e no resultado da conciliaçã
   assert.equal(result.status,'pronto');
   assert.equal(result.tituloId,1543);
   assert.equal(result.parcelaId,2041);
-  assert.equal(paths.length,2);
+  assert.equal(paths.length,3);
   assert.equal(titles.length,1);
   assert.equal(titles[0].fornecedorNome,'OUTRA EMPRESA');
   assert.equal(titles[0].saldo,100);
-  assert.equal(titles[0].complemento,undefined);
+  assert.equal(titles[0].complemento,'Dados do título');
 });
 
 test('conflito permite escolha manual de parcela aberta e mantém reserva por linha', async () => {
@@ -473,4 +475,117 @@ test('complemento do título aceita palavra relevante inteira; parcela exige nom
     assert.equal((await reconcile([parcel('2026-09-17')],row,options(texto))).status,'nao_encontrado');
   }
   assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'AMP'},options('PRONAMPE'))).status,'nao_encontrado');
+});
+
+
+test('complementa título do período e identifica Angeloni pelo complemento', async t => {
+  const {listarContasPagar}=load('lib/m8.ts');
+  let details={data:[{id:65222,complemento:'SUPERMERCADOS ANGELONI REFERENTE DOCS: 8384',saldo:1164.79},{id:777,saldo:100}]};
+  t.mock.method(globalThis,'fetch',async url=>new Response(JSON.stringify(new URL(url).pathname.endsWith('/consulta')
+    ? {data:[{id:88376,tituloId:65222,pessoaNome:'A. ANGELONI & CIA. LTDA',saldo:1164.79}]}
+    : details)));
+  const period={inicio:'2026-10-01',fim:'2026-10-31'};
+  const titles=await listarContasPagar('mock',period);
+  assert.deepEqual(titles.map(t=>t.id),[65222]);
+  const result=await reconcile([parcel('2026-10-10',{id:88376,pessoaNome:'POSTOS ANGELONI',complemento:null,valor:1164.79,saldo:1164.79})],
+    {...baseRow,cliente:'PG.P/INTERNET - SUPERMERCADOS ANGELONI',valor:1164.79,dataPagamento:'2026-10-13'},{titles});
+  assert.equal(result.status,'pronto');
+  assert.equal(result.parcelaId,88376);
+  assert.match(result.statusMensagem,/complemento do título/);
+  details={data:[]};
+  await assert.rejects(()=>listarContasPagar('mock',period),/65222/);
+  details={data:[],errors:[{message:'Falha'}]};
+  await assert.rejects(()=>listarContasPagar('mock',period),/lista incompleta/);
+});
+
+const {toggleSuggestionInRows} = load('lib/value-suggestions.ts');
+const {expandPayments} = load('lib/multiple-payments.ts');
+async function multipleSelection() {
+  const row={...baseRow,valor:100};
+  const result=await reconcile([],row,{titles:[{id:1,pessoaNome:'FORNECEDOR',saldo:30},{id:2,pessoaNome:'FORNECEDOR',saldo:70}],
+    parcelsByTitle:{1:[parcel('2026-09-17',{id:11,valor:30,saldo:30})],2:[parcel('2026-09-17',{id:12,valor:70,saldo:70})]}});
+  let rows=[{...row,...result}];
+  for(const option of result.sugestoesValor) rows=toggleSuggestionInRows(rows,row.rowId,option,1,'sicredi');
+  return rows[0];
+}
+test('seleção múltipla soma parcelas de títulos diferentes sem juros e reserva ambas', async () => {
+  const row=await multipleSelection();
+  assert.equal(row.status,'pronto');
+  assert.equal(row.parcelasSelecionadas.length,2);
+  assert.equal(row.valorJuros,0);
+  assert.equal(row.valorDesconto,0);
+  assert.deepEqual(row.parcelasSelecionadas.map(p=>p.valor),[30,70]);
+  const other={...row,rowId:'other',parcelasSelecionadas:undefined,status:'sugestao'};
+  const rows=[row,other];
+  assert.equal(toggleSuggestionInRows(rows,'other',row.sugestoesValor[1],1,'sicredi'),rows);
+  const removed=toggleSuggestionInRows([row],row.rowId,row.sugestoesValor[0],1,'sicredi')[0];
+  assert.equal(removed.parcelasSelecionadas.length,1);
+  assert.equal(removed.valorJuros,30); // seleção única conserva o ajuste existente
+  const empty=toggleSuggestionInRows([removed],row.rowId,row.sugestoesValor[1],1,'sicredi')[0];
+  assert.equal(empty.parcelasSelecionadas,undefined);
+  assert.equal(empty.status,'sugestao');
+});
+
+test('seleção múltipla diferente do extrato fica bloqueada e API recusa soma adulterada', async () => {
+  const row=await multipleSelection();
+  const options=row.sugestoesValor.map(s=>({...s,principal:s.principal-1,parcela:{...s.parcela,valor:s.principal-1,saldo:s.principal-1}}));
+  let rows=[{...baseRow,valor:100,status:'sugestao',sugestoesValor:options}];
+  for(const option of options) rows=toggleSuggestionInRows(rows,baseRow.rowId,option,1,'sicredi');
+  assert.equal(rows[0].status,'sugestao');
+  assert.throws(()=>expandPayments([{...rows[0],status:'pronto'}]),/soma/);
+  assert.throws(()=>expandPayments([{...row,valor:100.01}]),/soma/);
+  const tampered=structuredClone(row); tampered.parcelasSelecionadas[0].valorJuros=1;
+  assert.throws(()=>expandPayments([tampered]),/inválida/);
+});
+
+function multipleRoute(calls, failParcel) {
+  return load('app/api/m8/baixar/route.ts',{'@/lib/matching-dates':dates,'@/lib/amount-adjustment':adjustments,'@/lib/m8':{
+    autenticarM8:async()=> 'mock',baixarParcela:async(...args)=>{calls.push(args);if(args[2]===failParcel) throw new Error('HTTP 400: falha simulada');return {ok:true};},
+  }});
+}
+const paymentRequest=rows=>new Request('http://localhost/api/m8/baixar',{method:'POST',body:JSON.stringify({company:1,bankId:'sicredi',rows,config:{contaContabilId:14700,historicoId:2,meioPagamentoId:4}})});
+test('baixa múltipla faz POST individual, agrega retorno e bloqueia reenvio de grupo processado', async () => {
+  const row=await multipleSelection();const calls=[];
+  const response=await multipleRoute(calls).POST(paymentRequest([row]));
+  const events=(await response.text()).split('\n').filter(s=>s.trim()).map(s=>JSON.parse(s));
+  assert.deepEqual(calls.map(c=>[c[1],c[2],c[3].valor,c[3].valorJuros,c[3].valorDesconto]),[[1,11,30,0,0],[2,12,70,0,0]]);
+  const result=events.filter(e=>e.result).at(-1).result;
+  assert.equal(result.rowId,row.rowId);
+  assert.equal(result.status,'baixada');
+  assert.deepEqual(result.parcelasSelecionadas.map(p=>p.status),['baixada','baixada']);
+  assert.throws(()=>expandPayments([result]),/já iniciada/);
+});
+test('falha em uma parcela preserva sucesso da outra e trava edição do grupo', async () => {
+  const row=await multipleSelection();const calls=[];
+  const response=await multipleRoute(calls,12).POST(paymentRequest([row]));
+  const events=(await response.text()).split('\n').filter(s=>s.trim()).map(s=>JSON.parse(s));
+  const result=events.filter(e=>e.result).at(-1).result;
+  assert.equal(result.status,'erro');
+  assert.deepEqual(result.parcelasSelecionadas.map(p=>p.status),['baixada','erro']);
+  assert.match(result.parcelasSelecionadas[1].apiError,/falha simulada/);
+  assert.equal(calls.length,2);
+  const rows=[result];
+  assert.equal(toggleSuggestionInRows(rows,result.rowId,result.sugestoesValor[0],1,'sicredi'),rows);
+});
+test('API bloqueia parcela repetida entre grupo e outra linha antes de baixar', async () => {
+  const row=await multipleSelection();const calls=[];
+  const duplicate={...row.parcelasSelecionadas[0],rowId:'other',numeroLinha:3};
+  const text=await (await multipleRoute(calls).POST(paymentRequest([row,duplicate]))).text();
+  assert.match(text,/selecionada nas linhas/);
+  assert.equal(calls.length,0);
+});
+
+test('múltiplas parcelas do mesmo título fecham em centavos e validação de data vale para cada baixa', async () => {
+  const row={...baseRow,valor:0.3};
+  const result=await reconcile([parcel('2026-09-17',{id:11,valor:0.1,saldo:0.1}),parcel('2026-09-17',{id:12,valor:0.2,saldo:0.2})],row);
+  let rows=[{...row,...result}];
+  for(const option of result.sugestoesValor) rows=toggleSuggestionInRows(rows,row.rowId,option,1,'sicredi');
+  assert.equal(rows[0].status,'pronto');
+  assert.deepEqual(expandPayments(rows).rows.map(p=>p.valor),[0.1,0.2]);
+  const changed=structuredClone(rows[0]);
+  changed.parcelasSelecionadas[1].parcelaM8.vencimento='2026-10-01';
+  const calls=[];
+  const response=await multipleRoute(calls).POST(paymentRequest([changed]));
+  assert.match(await response.text(),/não aprovada/);
+  assert.equal(calls.length,0);
 });

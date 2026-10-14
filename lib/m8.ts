@@ -372,7 +372,25 @@ export async function listarContasPagar(
     });
   }
   console.log(`[M8] Consulta: ${response.data.length} registro(s), ${titulos.size} título(s) distintos.`);
-  return Array.from(titulos.values());
+  if (!titulos.size) return [];
+  const detalhes = await request<any>(`${baseUrl}/v1/financeiro/contapagar?PageSize=0&Page=0`, {
+    method: "GET", headers: authHeaders(token),
+  });
+  if (!Array.isArray(detalhes?.data) || detalhes?.errors?.length) {
+    throw new Error("Consulta dos complementos dos títulos retornou dados inválidos ou erros. A conciliação não pode continuar com uma lista incompleta.");
+  }
+  const porId = new Map<number, M8ContaPagar>(detalhes.data.map((titulo: M8ContaPagar) => [Number(titulo.id), titulo]));
+  return Array.from(titulos.values()).map(titulo => {
+    const completo = porId.get(titulo.id);
+    if (!completo) throw new Error(`Dados completos do título ${titulo.id} não encontrados. Tente conciliar novamente.`);
+    return {
+      ...titulo, ...completo,
+      // Preserve os IDs e o saldo das parcelas do período para o filtro de pendentes.
+      id: titulo.id, tituloId: titulo.id, saldo: titulo.saldo,
+      pessoaNome: titulo.pessoaNome,
+      fornecedorNome: completo.fornecedorNome ?? titulo.fornecedorNome,
+    };
+  });
 }
 
 export async function listarParcelas(

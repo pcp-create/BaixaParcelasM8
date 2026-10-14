@@ -1,3 +1,4 @@
+import { expandPayments, mergePaymentResult } from "@/lib/multiple-payments";
 import { amountForMatching } from "@/lib/amount-adjustment";
 import { calendarForCompany, toleranceForBank, matchDates, validDateReview } from "@/lib/matching-dates";
 import {
@@ -252,9 +253,20 @@ export async function POST(
            ENVIAR EVENTO
         ==================================================== */
 
+        let paymentParents = new Map<string, NormalizedCsvRow>();
+        const paymentStates = new Map<string, NormalizedCsvRow>();
+
         function enviar(
           dados: any
         ) {
+          const parent = paymentParents.get(dados.result?.rowId);
+          if (parent && ["baixada", "erro"].includes(dados.result?.status)) {
+            const updated = mergePaymentResult(paymentStates.get(parent.rowId) ?? parent, dados.result);
+            paymentStates.set(parent.rowId, updated);
+            dados = { ...dados, result: updated };
+          } else if (parent && dados.result) {
+            dados = { ...dados, result: { rowId: parent.rowId, status: "baixando", baixaIniciada: true } };
+          }
           controller.enqueue(
             encoder.encode(
               criarEvento(
@@ -277,8 +289,9 @@ export async function POST(
               body?.company
             );
 
-          const rows =
-            body?.rows as NormalizedCsvRow[];
+          const expanded = expandPayments(body?.rows as NormalizedCsvRow[]);
+          const rows = expanded.rows;
+          paymentParents = expanded.parents;
 
           const bankId = String(body?.bankId ?? "");
           // Valida todo o lote antes de autenticar ou efetuar qualquer baixa.

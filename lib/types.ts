@@ -93,6 +93,8 @@ export interface NormalizedCsvRow {
   valorDesconto?: number;
   descontoConfirmado?: number;
   sugestoesValor?: ValueSuggestion[];
+  parcelasSelecionadas?: NormalizedCsvRow[];
+  baixaIniciada?: boolean;
 
   /*
    * Tipo do movimento bancário:

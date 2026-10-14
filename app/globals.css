@@ -1689,3 +1689,5 @@ th.right .sort-header span:first-child {
 .suggestions-scroll { border: 1px solid #cddced; border-radius: 8px; }
 .value-suggestions tbody > tr > td { background: #fff; }
 .value-suggestions tbody > tr:hover > td { background: #eaf2fc; }
+
+.selection-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 12px; margin-bottom: 12px; border: 1px solid #b7cde6; border-radius: 6px; background: #fff; color: #174d80; }

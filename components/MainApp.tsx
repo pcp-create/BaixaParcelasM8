@@ -21,7 +21,7 @@ import {
 } from "@/lib/csv";
 
 import ValueSuggestions from "./ValueSuggestions";
-import { selectSuggestionInRows, clearValueSelection } from "@/lib/value-suggestions";
+import { toggleSuggestionInRows, clearValueSelection } from "@/lib/value-suggestions";
 
 import { amountForMatching } from "@/lib/amount-adjustment";
 
@@ -331,7 +331,23 @@ export default function MainApp() {
     clearFilters();
     setDateReviewRow(null);
     setExpandedValueRows(new Set());
-  }, [bankId, company]);
+  }, [bankId]);
+
+  function handleCompanyChange(nextCompany: number) {
+    if (busy || nextCompany === company) return;
+    setCompany(nextCompany);
+    // Recria os registros a partir do arquivo, sem carregar vínculos de outra empresa.
+    setRows(normalizeRows(rawRows, bank));
+    setProgress(INITIAL_PROGRESS);
+    setDateReviewRow(null);
+    setExpandedValueRows(new Set());
+    setDetailModal(null);
+    setShowFullPayload(false);
+    clearFilters();
+    setSortKey(null);
+    setSortDirection(null);
+    setMessage(rawRows.length ? "Empresa alterada. Arquivo preservado; concilie novamente para consultar os dados desta empresa." : "");
+  }
 
   /* ==========================================================
      CONTADORES
@@ -987,6 +1003,8 @@ export default function MainApp() {
                     ? {
                         ...r,
                         ...result,
+                        parcelasSelecionadas: result.parcelasSelecionadas ?? (operation === "baixa" && r.parcelasSelecionadas?.length === 1
+                          ? [{ ...r.parcelasSelecionadas[0], ...result }] : r.parcelasSelecionadas),
                       }
                     : r
               )
@@ -1195,6 +1213,7 @@ export default function MainApp() {
         (
           r
         ): NormalizedCsvRow => {
+          if (r.baixaIniciada) return r;
           if (
             ehCredito(
               r.tipo
@@ -1242,6 +1261,7 @@ export default function MainApp() {
             ...r,
 
             sugestoesValor: undefined,
+            parcelasSelecionadas: undefined,
             correspondenciaData: undefined,
             revisaoData: undefined,
             status:
@@ -1670,7 +1690,7 @@ export default function MainApp() {
 
     if (
       !confirm(
-        `Confirma a baixa de ${aptas.length} parcela(s), totalizando ${money(
+        `Confirma a baixa de ${aptas.reduce((n, r) => n + (r.parcelasSelecionadas?.length || 1), 0)} parcela(s) em ${aptas.length} linha(s) do extrato, totalizando ${money(
           total
         )}?`
       )
@@ -1701,6 +1721,7 @@ export default function MainApp() {
             )
               ? {
                   ...r,
+                  baixaIniciada: (r.parcelasSelecionadas?.length ?? 0) > 1,
                   status:
                     "baixando",
                   statusMensagem:
@@ -1760,10 +1781,10 @@ export default function MainApp() {
         );
       }
 
-      await processStream(
-        response,
-        "baixa"
-      );
+      const baixaResult = await processStream(response, "baixa");
+      if (baixaResult.error || !baixaResult.doneReceived) {
+        throw new Error(baixaResult.error || "Retorno da baixa interrompido. Confira no M8 as parcelas sem confirmação antes de tentar novamente.");
+      }
 
       setMessage(
         "Processamento de baixa concluído."
@@ -2034,7 +2055,7 @@ export default function MainApp() {
       className="setup-select"
       value={company}
       disabled={busy}
-      onChange={(e) => setCompany(Number(e.target.value))}
+      onChange={(e) => handleCompanyChange(Number(e.target.value))}
     >
       <option value={1}>1 - RJ Industria</option>
       <option value={2}>2 - Serrana</option>
@@ -2739,8 +2760,7 @@ export default function MainApp() {
 
                         ) : (
 
-                          r.tituloId ??
-                          "—"
+                          r.parcelasSelecionadas?.length ? `${new Set(r.parcelasSelecionadas.map(p => p.tituloId)).size} título(s)` : r.tituloId ?? "—"
 
                         )}
 
@@ -2764,8 +2784,7 @@ export default function MainApp() {
 
                         ) : (
 
-                          r.parcelaId ??
-                          "—"
+                          r.parcelasSelecionadas?.length ? `${r.parcelasSelecionadas.length} parcelas` : r.parcelaId ?? "—"
 
                         )}
 
@@ -2787,7 +2806,7 @@ export default function MainApp() {
                       >
 
                         {r.statusMensagem}
-                        {r.parcelaId && ["pronto", "revisar"].includes(r.status) && <div><button type="button" className="link-button" disabled={busy} onClick={() => setRows((current) => current.map((row) => row.rowId === r.rowId ? clearValueSelection(row) : row))}>Remover seleção</button></div>}
+                        {(r.parcelaId || r.parcelasSelecionadas?.length) && !r.baixaIniciada && ["pronto", "revisar", "sugestao"].includes(r.status) && <div><button type="button" className="link-button" disabled={busy} onClick={() => setRows((current) => current.map((row) => row.rowId === r.rowId ? clearValueSelection(row) : row))}>Remover seleção</button></div>}
                         {!!r.sugestoesValor?.length && <div><button type="button" className="link-button" aria-expanded={expandedValueRows.has(r.rowId)} onClick={() => setExpandedValueRows((current) => { const next = new Set(current); if (next.has(r.rowId)) next.delete(r.rowId); else next.add(r.rowId); return next; })}>{expandedValueRows.has(r.rowId) ? "Ocultar" : "Ver"} {r.sugestoesValor.length} possíveis parcelas</button></div>}
                         {r.status === "revisar" && (
                           <div><button type="button" className="link-button" disabled={busy} onClick={() => setDateReviewRow(r)}>Revisar correspondência</button></div>
@@ -2803,7 +2822,7 @@ export default function MainApp() {
 
                     </tr>
                     {expandedValueRows.has(r.rowId) && !!r.sugestoesValor?.length && <tr className="suggestions-detail-row"><td colSpan={11} className="suggestions-cell">
-                      <ValueSuggestions row={r} rows={rows} disabled={busy} onSelect={(suggestion) => setRows((current) => selectSuggestionInRows(current, r.rowId, suggestion, company, bankId))} />
+                      <ValueSuggestions row={r} rows={rows} disabled={busy} onSelect={(suggestion) => setRows((current) => toggleSuggestionInRows(current, r.rowId, suggestion, company, bankId))} />
                     </td></tr>}
                     </Fragment>
 
