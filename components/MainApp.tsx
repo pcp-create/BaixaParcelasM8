@@ -2060,6 +2060,7 @@ export default function MainApp() {
       <option value={1}>1 - RJ Industria</option>
       <option value={2}>2 - Serrana</option>
       <option value={27404}>27404 - Criciúma</option>
+      <option value={28206}>28206 - VS Serviços</option>
     </select>
   </div>
 </section>

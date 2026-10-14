@@ -84,7 +84,7 @@ A leitura das planilhas usa [SheetJS](https://docs.sheetjs.com/docs/getting-star
 
 O botão de **engrenagem ao lado do banco selecionado** permite editar esses parâmetros, mesmo antes de importar um CSV. As alterações M8 são salvas somente neste navegador. O layout sempre vem do arquivo; configurações antigas de layout salvas no navegador não são mais carregadas. Na primeira abertura desta versão, os parâmetros M8 partem dos padrões do arquivo.
 
-A seleção inicial segue a ordem **Banco → Arquivo CSV/XLS → Empresa M8**. As empresas disponíveis são **1 - RJ Industria** (padrão), **2 - Serrana** e **27404 - Criciúma**.
+A seleção inicial segue a ordem **Banco → Arquivo CSV/XLS → Empresa M8**. As empresas disponíveis são **1 - RJ Industria** (padrão), **2 - Serrana**, **27404 - Criciúma** e **28206 - VS Serviços**.
 
 ### Configuração M8 por banco
 
