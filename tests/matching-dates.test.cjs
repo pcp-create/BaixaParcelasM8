@@ -73,7 +73,7 @@ test('API mantém valor e fornecedor obrigatórios e classifica proximidade para
   assert.equal(result.correspondenciaData.dias,2);
   assert.equal(result.parcelaId,11);
   assert.equal((await reconcile([parcel('2026-09-15',{valor:200})])).status,'nao_encontrado');
-  assert.equal((await reconcile([parcel('2026-09-15')], {...baseRow,cliente:'OUTRO CLIENTE'})).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-15')], {...baseRow,cliente:'OUTRO CLIENTE'})).status,'sugestao');
 });
 test('API libera data exata e próximo dia útil e exige revisão da antecipação', async () => {
   assert.equal((await reconcile([parcel('2026-09-17')])).status,'pronto');
@@ -184,7 +184,7 @@ test('consulta preserva complemento do JSON da parcela até a comparação na co
   const result = await reconcile(parcelas, baseRow, options);
   assert.equal(result.status, 'pronto');
   assert.match(result.statusMensagem, /complemento da parcela/);
-  assert.equal((await reconcile(parcelas.map(p => ({...p, complemento: undefined})), baseRow, options)).status, 'nao_encontrado');
+  assert.equal((await reconcile(parcelas.map(p => ({...p, complemento: undefined})), baseRow, options)).status, 'sugestao');
 });
 
 test('busca no complemento da própria parcela quando o título não identifica o fornecedor', async () => {
@@ -192,7 +192,7 @@ test('busca no complemento da própria parcela quando o título não identifica 
   const matched=await reconcile([parcel('2026-09-17',{complemento:'Pagamento fornecedor exemplo'})],baseRow,options);
   assert.equal(matched.status,'pronto');
   assert.match(matched.statusMensagem,/complemento da parcela/);
-  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'Pagamento fornecedor exemplo',valor:200}),parcel('2026-09-17',{id:12,complemento:'Sem identificação'})],baseRow,options)).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17',{complemento:'Pagamento fornecedor exemplo',valor:200}),parcel('2026-09-17',{id:12,complemento:'Sem identificação'})],baseRow,options)).status,'sugestao');
   assert.equal((await reconcile([parcel('2026-09-15',{complemento:'Fornecedor exemplo'})],baseRow,options)).status,'revisar');
   assert.equal((await reconcile([parcel('2026-09-01',{complemento:'Fornecedor exemplo'})],baseRow,options)).status,'nao_encontrado');
 });
@@ -374,7 +374,7 @@ test('sugestões exigem CLIENTE completo no complemento do título ou da própri
   assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11]);
   assert.equal((await reconcile([parcel('2026-09-17')],row,options(row.cliente+'A'))).status,'sugestao');
   // fornecedorNome sozinho não substitui pessoaNome na regra atual.
-  assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17',{valor:51,saldo:51})],row,options(''))).status,'sugestao');
 });
 
 test('usa tituloId da consulta na URL de parcelas e no resultado da conciliação', async t => {
@@ -442,7 +442,7 @@ test('remove somente o prefixo anterior ao primeiro separador nos complementos',
   }
   assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'PREFIXO - '},options('PREFIXO'))).status,'nao_encontrado');
   assert.equal((await reconcile([parcel('2026-09-17')],{...row,cliente:'CD-PROPAGANDA'},options('PROPAGANDA'))).status,'sugestao');
-  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,cliente:'PREFIXO NOVO - CD PROPAGANDA'},options('PREFIXO NOVO'))).status,'nao_encontrado');
+  assert.equal((await reconcile([parcel('2026-09-17')],{...baseRow,cliente:'PREFIXO NOVO - CD PROPAGANDA'},options('PREFIXO NOVO'))).status,'sugestao');
 });
 
 
@@ -459,7 +459,7 @@ test('identificação segue pessoaNome, complemento do título e complemento da 
   assert.match(byTitle.statusMensagem,/complemento do título/);
   const byParcel=await run(title,{...item,pessoaNome:'OUTRO',complemento:'CD PROPAGANDA'});
   assert.match(byParcel.statusMensagem,/complemento da parcela/);
-  assert.equal((await run(title,{...item,pessoaNome:'ABCD PROPAGANDA',complemento:'CD'})).status,'nao_encontrado');
+  assert.equal((await run(title,{...item,pessoaNome:'ABCD PROPAGANDA',complemento:'CD'})).status,'sugestao');
   assert.equal((await reconcile([item],{...row,cliente:'CD PROPAGANDA'},{titles:[title]})).status,'pronto');
 });
 
@@ -588,4 +588,43 @@ test('múltiplas parcelas do mesmo título fecham em centavos e validação de d
   const response=await multipleRoute(calls).POST(paymentRequest([changed]));
   assert.match(await response.text(),/não aprovada/);
   assert.equal(calls.length,0);
+});
+
+
+test('sigla C D L identifica CDL diretamente e não corresponde à inicial C de J.C.', async () => {
+  const row={...baseRow,cliente:'PG.P/INTERNET - C D L',valor:1509.15,dataPagamento:'2026-10-13'};
+  const titles=[{id:65164,pessoaNome:'CAMARA DE DIRIGENTES LOJISTAS - CDL',complemento:'C D L / CDL BOLETO OK',saldo:1509.15},
+    {id:65358,pessoaNome:'J.C. ASSESSORIA',saldo:1066}];
+  const parcelsByTitle={65164:[parcel('2026-10-10',{id:88311,pessoaNome:'CDL RIO DO SUL',valor:1509.15,saldo:1509.15})],
+    65358:[parcel('2026-10-28',{id:88569,pessoaNome:'J.C. ASSESSORIA',valor:1066,saldo:1066})]};
+  const result=await reconcile([],row,{titles,parcelsByTitle});
+  assert.equal(result.status,'pronto');
+  assert.equal(result.parcelaId,88311);
+  assert.equal(result.correspondenciaData.tipo,'dia_util');
+  assert.equal((await reconcile([],row,{titles:[titles[1]],parcelsByTitle})).status,'nao_encontrado');
+  const viaTitle=await reconcile([parcel('2026-10-10',{valor:1509.15,saldo:1509.15})],row,{titles:[{id:1,pessoaNome:'OUTRO',complemento:'CDL BOLETO OK',saldo:1509.15}]});
+  assert.equal(viaTitle.status,'pronto');
+  assert.match(viaTitle.statusMensagem,/complemento do título/);
+});
+
+test('sem identificação sugere somente valor, saldo integral e data compatíveis, sem liberar baixa automática', async () => {
+  const row={...baseRow,cliente:'CLIENTE NAO IDENTIFICADO'};
+  const options={titles:[{id:1,pessoaNome:'OUTRO',saldo:100}]};
+  const result=await reconcile([
+    parcel('2026-09-17'),
+    parcel('2026-09-15',{id:12}),
+    parcel('2026-09-30',{id:13}),
+    parcel('2026-09-17',{id:14,valor:90,saldo:90}),
+    parcel('2026-09-17',{id:15,saldo:50}),
+    parcel('2026-09-17',{id:16,saldo:0}),
+    parcel('2026-10-01',{id:17}),
+    parcel('2026-09-01',{id:18}),
+  ],row,options);
+  assert.equal(result.status,'sugestao');
+  assert.equal(result.parcelaId,undefined);
+  assert.deepEqual(result.sugestoesValor.map(s=>s.parcela.id),[11,12,13]);
+  assert.ok(result.sugestoesValor.every(s=>s.criterio==='valor_saldo_data' && s.juros===0 && s.desconto===0));
+  const selected=selectValueSuggestion({...row,...result},result.sugestoesValor[1],1,'sicredi');
+  assert.equal(selected.status,'pronto');
+  assert.equal(dates.validDateReview(selected,1,'sicredi'),true);
 });

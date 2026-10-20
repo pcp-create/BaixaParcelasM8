@@ -257,7 +257,8 @@ function normalizarTexto(valor: unknown): string {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .replace(/\b[A-Z](?: [A-Z])+\b/g, sigla => sigla.replace(/ /g, ""));
 }
 
 /* ============================================================
@@ -334,7 +335,7 @@ function origemIdentificacao(clienteCsv: string, titulo: M8ContaPagar, parcela?:
   if (!cliente) return null;
   const primeiraPalavra = cliente.split(" ")[0];
   // Compara palavras inteiras: AMP não identifica PRONAMPE.
-  if ([parcela?.pessoaNome, titulo.pessoaNome].some(nome =>
+  if (primeiraPalavra.length >= 2 && [parcela?.pessoaNome, titulo.pessoaNome].some(nome =>
     ` ${normalizarTexto(nome)} `.includes(` ${primeiraPalavra} `))) return "pessoaNome";
   if (clienteParcialNoComplementoTitulo(clienteCsv, titulo.complemento)) return "complemento do título";
   if (clienteCompletoNoComplemento(clienteCsv, parcela?.complemento)) return "complemento da parcela";
@@ -947,7 +948,7 @@ export async function POST(request: Request) {
 
           // Consulte também títulos sem identificação própria: suas parcelas podem identificar o fornecedor.
           const buscarNoComplementoParcela = titulosFornecedor.length === 0;
-          const titulosParaConsultar = normalizarTexto(clienteSemPrefixoBanco(row.cliente)) ? titulos : [];
+          const titulosParaConsultar = titulos;
 
           /* ==================================================
              CONSULTAR PARCELAS
@@ -1022,14 +1023,19 @@ export async function POST(request: Request) {
 
             const parcelasDoFornecedor = parcelas.filter(parcela => origemIdentificacao(row.cliente, titulo, parcela) !== null);
             const parcelasCompativeis = encontrarParcelasCompativeis(row, parcelasDoFornecedor, calendar, tolerance);
-            for (const parcela of parcelasDoFornecedor) {
+            for (const parcela of parcelas) {
               const data = matchDates(parcela.vencimento, row.dataPagamento, calendar, tolerance);
               const principal = normalizarValor(parcela.valor);
               if (!data || situacaoParcela(parcela) !== "aberta" || principal <= 0 ||
-                  typeof row.valor !== "number" || !Number.isFinite(row.valor) || row.valor <= 0 ||
-                  mesmoValor(principal, amountForMatching(row))) continue;
+                  typeof row.valor !== "number" || !Number.isFinite(row.valor) || row.valor <= 0) continue;
+              const identificada = origemIdentificacao(row.cliente, titulo, parcela) !== null;
+              const valorCompativel = mesmoValor(principal, amountForMatching(row));
+              // Com nome identificado e valor igual, o caminho normal tem prioridade.
+              // Sem nome identificado, valor e saldo precisam coincidir para sugerir manualmente.
+              if (identificada ? valorCompativel : !valorCompativel || !mesmoValor(normalizarValor(parcela.saldo), principal)) continue;
               const delta = Math.round(row.valor * 100) - Math.round(principal * 100);
-              sugestoesValor.push({titulo, parcela, data, principal, juros: Math.max(delta, 0) / 100, desconto: Math.max(-delta, 0) / 100});
+              sugestoesValor.push({titulo, parcela, data, principal, juros: Math.max(delta, 0) / 100, desconto: Math.max(-delta, 0) / 100,
+                criterio: identificada ? "identificacao" : "valor_saldo_data"});
             }
 
             for (
@@ -1089,7 +1095,7 @@ export async function POST(request: Request) {
           if (!correspondencias.length && sugestoesValor.length) {
             enviar({ type: "progress", operation: "conciliacao", current: atual, total: rows.length, label: row.cliente,
               result: { rowId: row.rowId, status: "sugestao", sugestoesValor,
-                statusMensagem: `${sugestoesValor.length} parcela(s) com identificação e datas compatíveis, mas valor diferente. Expanda a linha e selecione a parcela para calcular juros ou desconto.` }
+                statusMensagem: `${sugestoesValor.length} possível(is) parcela(s). Expanda a linha e confira o critério de cada sugestão antes de selecionar.` }
             });
             continue;
           }

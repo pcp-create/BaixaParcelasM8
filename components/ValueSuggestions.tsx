@@ -37,7 +37,7 @@ export default function ValueSuggestions({ row, rows, disabled, onSelect }: {
         <td>{suggestion.titulo.id} / {suggestion.parcela.id}</td>
         <td>{suggestion.titulo.fornecedorNome || "—"}<br />{String(suggestion.titulo.documento || "—")}</td>
         <td>Título: {String(suggestion.titulo.complemento || "—")}<br />Parcela: {String(suggestion.parcela.complemento || "—")}</td>
-        <td>{suggestion.data.vencimento}<br /><small>{suggestion.data.motivo}</small></td>
+        <td>{suggestion.data.vencimento}<br /><small>{suggestion.data.motivo}</small><br /><strong>{suggestion.criterio === "valor_saldo_data" ? "Valor, saldo e data compatíveis — nome não confirmado. Confira o fornecedor." : "Identificação compatível."}</strong></td>
         <td>{money(suggestion.principal)}</td><td>{selected.length > 1 ? "—" : money(suggestion.juros)}</td><td>{selected.length > 1 ? "—" : money(suggestion.desconto)}</td>
         <td>{selection?.status === "baixada" ? "Baixada" : selection?.status === "erro" ? selection.apiError || selection.statusMensagem : selection ? row.baixaIniciada && row.status === "erro" ? "Sem confirmação. Verifique no M8." : "Aguardando baixa" : "—"}</td>
       </tr>; })}</tbody>

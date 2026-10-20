@@ -208,6 +208,7 @@ export interface M8Parcela {
 }
 
 export interface ValueSuggestion {
+  criterio?: "identificacao" | "valor_saldo_data";
   titulo: M8ContaPagar;
   parcela: M8Parcela;
   data: NonNullable<NormalizedCsvRow["correspondenciaData"]>;
